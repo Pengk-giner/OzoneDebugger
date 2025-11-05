@@ -16,6 +16,7 @@ var distanceDisplay = document.querySelector('#distance');
 var headingDisplay = document.querySelector('#heading');
 var isRecordingDisplay = document.querySelector('#is_recording');
 
+var lastSeen = document.querySelector('#last_obs_time');
 
 // Register bluetooth data sources, connect to parsers and display elements
 registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a37-0000-1000-8000-00805f9b34fb", blehandle_sint16, windSpeedDisplay, '')
@@ -41,6 +42,28 @@ function registerBluetoothDataSource(BluetoothDataSourcesArray, BluetoothService
     DataLog: DataLog});
 };
 
+// Update or create a small element showing the last time a value was received.
+function updateLastSeen(serviceUUID, charUUID) {
+  // Prefer an existing element with id 'last_obs_time' (declared in the page)
+  var el = document.querySelector('#last_obs_time') || document.getElementById('last_seen');
+  var now = new Date();
+  // var text = 'Last seen: ' + now.toLocaleString() + ' — ' + serviceUUID + ' / ' + charUUID;
+  var text = now.toLocaleString();
+  if (!el) {
+    // fallback: create a small helper element if the page doesn't provide one
+    el = document.createElement('div');
+    el.id = 'last_seen';
+    el.style.cssText = 'font-size:0.9em; color:#444; margin-top:6px;';
+    var anchor = document.querySelector('#connect_button');
+    if (anchor && anchor.parentNode) {
+      anchor.parentNode.insertBefore(el, anchor.nextSibling);
+    } else {
+      document.body.appendChild(el);
+    }
+  }
+  el.textContent = text;
+}
+
 function connectBlueToothCharacteristic(BluetoothDevice, BluetoothServiceUUID, BluetoothCharacteristicUUID, ValueHandler, TargetSelector, DataLog){
   // Connects a bluetooth characteristic to a document and to a DataLog, which holds historic information
   console.log('Connecting bluetooth data source: ' + BluetoothServiceUUID + ', ' + BluetoothCharacteristicUUID)
@@ -48,7 +71,17 @@ function connectBlueToothCharacteristic(BluetoothDevice, BluetoothServiceUUID, B
       .then(server => server.getPrimaryService(BluetoothServiceUUID))
       .then(service => service.getCharacteristic(BluetoothCharacteristicUUID))
       .then(characteristic => characteristic.startNotifications())
-      .then(characteristic => characteristic.addEventListener('characteristicvaluechanged', function(event){ ValueHandler(event, TargetSelector, DataLog) }))
+      .then(characteristic => characteristic.addEventListener('characteristicvaluechanged', function(event){
+        // call the existing handler to update the target element / data log
+        try { ValueHandler(event, TargetSelector, DataLog); } catch (e) { console.error('ValueHandler error', e); }
+        // update a visible "last seen" timestamp for this service/characteristic
+        try { 
+          var svc = String(BluetoothServiceUUID).toLowerCase();
+          if (svc === '0000ff10-0000-1000-8000-00805f9b34fb' ) {
+            updateLastSeen(BluetoothServiceUUID, BluetoothCharacteristicUUID);
+          }
+        } catch (e) { console.error('updateLastSeen error', e); }
+      }))
       // .catch(error => {
       //   console.log('error:' + error);
       // });
