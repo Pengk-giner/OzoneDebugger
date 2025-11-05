@@ -3,43 +3,38 @@ var BluetoothDevices = [];
 
 // configure the buttons
 var ConnectSourceButton = document.querySelector('#connect_button');
+var StartStopLoggingButton = document.querySelector('#start_stop_logging_button');
 
 // configure the display
-var windSpeedDisplay = document.querySelector('#wind_speed');
-var windAngleDisplay = document.querySelector('#wind_angle');
+var measuredCurrentDisplay = document.querySelector('#measured_current');
+var ozoneAQIDisplay = document.querySelector('#ozone_aqi');
 var longitudeDisplay = document.querySelector('#gps_lon');
 var latitudeDisplay = document.querySelector('#gps_lat');
-
-var speedDisplay = document.querySelector('#speed');
-var maxSpeedDisplay = document.querySelector('#max_speed');
-var distanceDisplay = document.querySelector('#distance');
-var headingDisplay = document.querySelector('#heading');
-var isRecordingDisplay = document.querySelector('#is_recording');
-
-var lastSeen = document.querySelector('#last_obs_time');
+var isRecordingDisplay = document.querySelector('#logging_status');
 
 // Register bluetooth data sources, connect to parsers and display elements
-registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a37-0000-1000-8000-00805f9b34fb", blehandle_sint16, windSpeedDisplay, '')
-registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a39-0000-1000-8000-00805f9b34fb", blehandle_sint16, windAngleDisplay, '')
+registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff12-0000-1000-8000-00805f9b34fb", blehandle_float, measuredCurrentDisplay, '')
+registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a37-0000-1000-8000-00805f9b34fb", blehandle_sint16, ozoneAQIDisplay, '')
 
-registerBluetoothDataSource(BluetoothDataSources, "0000180a-0000-1000-8000-00805f9b34fb", "00002a29-0000-1000-8000-00805f9b34fb", blehandle_double, latitudeDisplay, '')
-registerBluetoothDataSource(BluetoothDataSources, "0000180a-0000-1000-8000-00805f9b34fb", "00002a24-0000-1000-8000-00805f9b34fb", blehandle_double, longitudeDisplay, '')
+registerBluetoothDataSource(BluetoothDataSources, 'environmental_sensing', 'latitude', blehandle_double, latitudeDisplay, '')
+registerBluetoothDataSource(BluetoothDataSources, 'environmental_sensing', 'longitude', blehandle_double, longitudeDisplay, '')
 
-registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff12-0000-1000-8000-00805f9b34fb", blehandle_float, speedDisplay, '')
-registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff11-0000-1000-8000-00805f9b34fb", blehandle_float, maxSpeedDisplay, '')
-registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a37-0000-1000-8000-00805f9b34fb", blehandle_sint16, distanceDisplay, '')
-registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a37-0000-1000-8000-00805f9b34fb", blehandle_sint16, headingDisplay, '')
-registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a37-0000-1000-8000-00805f9b34fb", blehandle_sint16, isRecordingDisplay, '')
+
+// logging state
+var isLogging = false;
 
 // Utility functions
 function registerBluetoothDataSource(BluetoothDataSourcesArray, BluetoothServiceUUID, BluetoothCharacteristicUUID, ValueHandler, TargetSelector, DataLog) {
   // Appends a data source, parser and target to the data sources list
+  // ensure each source has a data log array to collect timestamped values when logging
+  var log = DataLog;
+  if (!log || !Array.isArray(log)) log = [];
   BluetoothDataSourcesArray.push({
     BluetoothServiceUUID: BluetoothServiceUUID,
     BluetoothCharacteristicUUID : BluetoothCharacteristicUUID,
     ValueHandler: ValueHandler,
     TargetSelector: TargetSelector,
-    DataLog: DataLog});
+    DataLog: log});
 };
 
 // Update or create a small element showing the last time a value was received.
@@ -87,26 +82,22 @@ function connectBlueToothCharacteristic(BluetoothDevice, BluetoothServiceUUID, B
       // });
 };
 
-
 ConnectSourceButton.addEventListener('click', function() {
   console.log('Requesting Bluetooth Service...')
   navigator.bluetooth.requestDevice({
-    acceptAllDevices : true, 
-    // filters:[{services :["90D3D000-C950-4DD6-9410-2B7AEB1DD7D8".toLowerCase()]}],
-    // Include any services we'll call getPrimaryService() for so the origin is allowed to access them
+    acceptAllDevices : true,
+    // filters:[{name :'ESP32'}],
     optionalServices: [
       'battery_service',
       'generic_access',
       'environmental_sensing',
       '0000180d-0000-1000-8000-00805f9b34fb', // 16-bit: Heart Rate (registered above)
-      '0000180a-0000-1000-8000-00805f9b34fb', // 16-bit: Device Information (registered above)
-      "0000ff10-0000-1000-8000-00805f9b34fb",
-      "90D3D000-C950-4DD6-9410-2B7AEB1DD7D8".toLowerCase()
+      "0000ff10-0000-1000-8000-00805f9b34fb"
     ]
   })
   .then(device => {
     BluetoothDataSources.forEach(source => {
-      connectBlueToothCharacteristic(device, source.BluetoothServiceUUID.toLowerCase(), source.BluetoothCharacteristicUUID.toLowerCase(), source.ValueHandler, source.TargetSelector, source.DataLog);
+      connectBlueToothCharacteristic(device, source.BluetoothServiceUUID, source.BluetoothCharacteristicUUID, source.ValueHandler, source.TargetSelector, source.DataLog);
     })
   })
   .catch(error => {
@@ -123,14 +114,14 @@ function blehandle_sint16(event, TargetSelector, DataLog) {
 }
 
 function blehandle_sint32(event, TargetSelector, DataLog) {
-  //console.log(event.target.value.byteLength)
+  console.log(event.target.value.byteLength)
   const value = event.target.value.getInt32(0, false);
   //console.log('Received: ' + value);
   TargetSelector.textContent = String(value / 1000) ;
 }
 
 function blehandle_double(event, TargetSelector, DataLog) {
-  //console.log(event.target.value.byteLength)
+  console.log(event.target.value.byteLength)
   const value = event.target.value.getFloat64(0, false);
   //console.log('Received: ' + value);
   TargetSelector.textContent = String(value.toFixed(6)) ;
@@ -141,4 +132,95 @@ function blehandle_float(event, TargetSelector, DataLog) {
   const value = event.target.value.getFloat32(0, true);
   //console.log('Received: ' + value);
   TargetSelector.textContent = String(value.toFixed(6)) ;
+}
+
+
+// Helper to download per-source logs as CSV files
+function downloadDataLogs() {
+  BluetoothDataSources.forEach(source => {
+    var log = source.DataLog;
+    if (!Array.isArray(log) || log.length === 0) return;
+    var rows = ['timestamp,value'];
+    log.forEach(entry => {
+      // escape values if needed
+      rows.push(String(entry.ts) + ',' + String(entry.value));
+    });
+    var csv = rows.join('\n');
+    var blob = new Blob([csv], { type: 'text/csv' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    var svc = String(source.BluetoothServiceUUID).replace(/[^0-9a-zA-Z_-]/g, '_');
+    var chr = String(source.BluetoothCharacteristicUUID).replace(/[^0-9a-zA-Z_-]/g, '_');
+    a.download = svc + '_' + chr + '_log.csv';
+    a.href = url;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+}
+
+// Start/Stop logging button behavior
+if (StartStopLoggingButton) {
+  StartStopLoggingButton.addEventListener('click', function() {
+    isLogging = !isLogging;
+    // update UI indicator
+
+    if (isRecordingDisplay) isRecordingDisplay.textContent = isLogging ? 'Recording' : 'Paused';
+    StartStopLoggingButton.textContent = isLogging ? 'Stop Logging' : 'Start Logging';
+    if (!isLogging) {
+      // when stopping, download logs
+      try { downloadDataLogs(); } catch (e) { console.error('Download error', e); }
+    }
+  });
+}
+
+
+// Bluetooth data handlers - these could be split up into more modular sub-capabilities
+function blehandle_sint16(event, TargetSelector, DataLog) {
+  const value = event.target.value.getInt16(0, false);
+  //console.log('Received: ' + value);
+  TargetSelector.textContent = String(value / 100) ;
+  // log value if logging enabled and DataLog is present
+  try {
+    if (isLogging && Array.isArray(DataLog)) {
+      DataLog.push({ ts: new Date().toISOString(), value: value / 100 });
+    }
+  } catch (e) { console.error('Logging error', e); }
+}
+
+function blehandle_sint32(event, TargetSelector, DataLog) {
+  //console.log(event.target.value.byteLength)
+  const value = event.target.value.getInt32(0, false);
+  //console.log('Received: ' + value);
+  TargetSelector.textContent = String(value / 1000) ;
+  try {
+    if (isLogging && Array.isArray(DataLog)) {
+      DataLog.push({ ts: new Date().toISOString(), value: value / 1000 });
+    }
+  } catch (e) { console.error('Logging error', e); }
+}
+
+function blehandle_double(event, TargetSelector, DataLog) {
+  //console.log(event.target.value.byteLength)
+  const value = event.target.value.getFloat64(0, false);
+  //console.log('Received: ' + value);
+  TargetSelector.textContent = String(value.toFixed(6)) ;
+  try {
+    if (isLogging && Array.isArray(DataLog)) {
+      DataLog.push({ ts: new Date().toISOString(), value: Number(value.toFixed(6)) });
+    }
+  } catch (e) { console.error('Logging error', e); }
+}
+
+function blehandle_float(event, TargetSelector, DataLog) {
+  console.log(event.target.value.byteLength)
+  const value = event.target.value.getFloat32(0, true);
+  //console.log('Received: ' + value);
+  TargetSelector.textContent = String(value.toFixed(6)) ;
+  try {
+    if (isLogging && Array.isArray(DataLog)) {
+      DataLog.push({ ts: new Date().toISOString(), value: Number(value.toFixed(6)) });
+    }
+  } catch (e) { console.error('Logging error', e); }
 }
