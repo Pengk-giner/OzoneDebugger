@@ -18,17 +18,17 @@ var isRecordingDisplay = document.querySelector('#is_recording');
 
 
 // Register bluetooth data sources, connect to parsers and display elements
-registerBluetoothDataSource(BluetoothDataSources, "90D3D000-C950-4DD6-9410-2B7AEB1DD7D8", "90D3D002-C950-4DD6-9410-2B7AEB1DD7D8", blehandle_sint16, windSpeedDisplay, '')
-registerBluetoothDataSource(BluetoothDataSources, "90D3D000-C950-4DD6-9410-2B7AEB1DD7D8", "90D3D003-C950-4DD6-9410-2B7AEB1DD7D8", blehandle_sint16, windAngleDisplay, '')
+registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a37-0000-1000-8000-00805f9b34fb", blehandle_sint16, windSpeedDisplay, '')
+registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a39-0000-1000-8000-00805f9b34fb", blehandle_sint16, windAngleDisplay, '')
 
-registerBluetoothDataSource(BluetoothDataSources, "90D3D000-C950-4DD6-9410-2B7AEB1DD7D8", "90D3D005-C950-4DD6-9410-2B7AEB1DD7D8", blehandle_double, latitudeDisplay, '')
-registerBluetoothDataSource(BluetoothDataSources, "90D3D000-C950-4DD6-9410-2B7AEB1DD7D8", "90D3D006-C950-4DD6-9410-2B7AEB1DD7D8", blehandle_double, longitudeDisplay, '')
+registerBluetoothDataSource(BluetoothDataSources, "0000180a-0000-1000-8000-00805f9b34fb", "00002a29-0000-1000-8000-00805f9b34fb", blehandle_double, latitudeDisplay, '')
+registerBluetoothDataSource(BluetoothDataSources, "0000180a-0000-1000-8000-00805f9b34fb", "00002a24-0000-1000-8000-00805f9b34fb", blehandle_double, longitudeDisplay, '')
 
-registerBluetoothDataSource(BluetoothDataSources, "90D3D000-C950-4DD6-9410-2B7AEB1DD7D8", "90D3D007-C950-4DD6-9410-2B7AEB1DD7D8", blehandle_sint16, speedDisplay, '')
-registerBluetoothDataSource(BluetoothDataSources, "90D3D000-C950-4DD6-9410-2B7AEB1DD7D8", "90D3D008-C950-4DD6-9410-2B7AEB1DD7D8", blehandle_sint16, maxSpeedDisplay, '')
-registerBluetoothDataSource(BluetoothDataSources, "90D3D000-C950-4DD6-9410-2B7AEB1DD7D8", "90D3D009-C950-4DD6-9410-2B7AEB1DD7D8", blehandle_sint16, distanceDisplay, '')
-registerBluetoothDataSource(BluetoothDataSources, "90D3D000-C950-4DD6-9410-2B7AEB1DD7D8", "90D3D00A-C950-4DD6-9410-2B7AEB1DD7D8", blehandle_sint16, headingDisplay, '')
-registerBluetoothDataSource(BluetoothDataSources, "90D3D000-C950-4DD6-9410-2B7AEB1DD7D8", "90D3D00B-C950-4DD6-9410-2B7AEB1DD7D8", blehandle_sint16, isRecordingDisplay, '')
+registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff12-0000-1000-8000-00805f9b34fb", blehandle_float, speedDisplay, '')
+registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff11-0000-1000-8000-00805f9b34fb", blehandle_float, maxSpeedDisplay, '')
+registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a37-0000-1000-8000-00805f9b34fb", blehandle_sint16, distanceDisplay, '')
+registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a37-0000-1000-8000-00805f9b34fb", blehandle_sint16, headingDisplay, '')
+registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a37-0000-1000-8000-00805f9b34fb", blehandle_sint16, isRecordingDisplay, '')
 
 // Utility functions
 function registerBluetoothDataSource(BluetoothDataSourcesArray, BluetoothServiceUUID, BluetoothCharacteristicUUID, ValueHandler, TargetSelector, DataLog) {
@@ -58,9 +58,18 @@ function connectBlueToothCharacteristic(BluetoothDevice, BluetoothServiceUUID, B
 ConnectSourceButton.addEventListener('click', function() {
   console.log('Requesting Bluetooth Service...')
   navigator.bluetooth.requestDevice({
-    //acceptAllDevices : true, { services: ['battery_service'] }
-    filters:[{services :["90D3D000-C950-4DD6-9410-2B7AEB1DD7D8".toLowerCase()]}],
-    optionalServices: ['battery_service', 'generic_access', 'environmental_sensing', "90D3D000-C950-4DD6-9410-2B7AEB1DD7D8".toLowerCase()]
+    acceptAllDevices : true, 
+    // filters:[{services :["90D3D000-C950-4DD6-9410-2B7AEB1DD7D8".toLowerCase()]}],
+    // Include any services we'll call getPrimaryService() for so the origin is allowed to access them
+    optionalServices: [
+      'battery_service',
+      'generic_access',
+      'environmental_sensing',
+      '0000180d-0000-1000-8000-00805f9b34fb', // 16-bit: Heart Rate (registered above)
+      '0000180a-0000-1000-8000-00805f9b34fb', // 16-bit: Device Information (registered above)
+      "0000ff10-0000-1000-8000-00805f9b34fb",
+      "90D3D000-C950-4DD6-9410-2B7AEB1DD7D8".toLowerCase()
+    ]
   })
   .then(device => {
     BluetoothDataSources.forEach(source => {
@@ -90,6 +99,13 @@ function blehandle_sint32(event, TargetSelector, DataLog) {
 function blehandle_double(event, TargetSelector, DataLog) {
   //console.log(event.target.value.byteLength)
   const value = event.target.value.getFloat64(0, false);
+  //console.log('Received: ' + value);
+  TargetSelector.textContent = String(value.toFixed(6)) ;
+}
+
+function blehandle_float(event, TargetSelector, DataLog) {
+  console.log(event.target.value.byteLength)
+  const value = event.target.value.getFloat32(0, true);
   //console.log('Received: ' + value);
   TargetSelector.textContent = String(value.toFixed(6)) ;
 }
