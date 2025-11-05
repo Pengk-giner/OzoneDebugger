@@ -151,7 +151,10 @@ function downloadDataLogs() {
     var a = document.createElement('a');
     var svc = String(source.BluetoothServiceUUID).replace(/[^0-9a-zA-Z_-]/g, '_');
     var chr = String(source.BluetoothCharacteristicUUID).replace(/[^0-9a-zA-Z_-]/g, '_');
-    a.download = svc + '_' + chr + '_log.csv';
+    if (source.BluetoothServiceUUID == "0000ff10-0000-1000-8000-00805f9b34fb") {
+      svc = "measured_current";
+    }
+    a.download = svc + '_log.csv';
     a.href = url;
     document.body.appendChild(a);
     a.click();
