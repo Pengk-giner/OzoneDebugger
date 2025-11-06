@@ -1,4 +1,4 @@
 ESP32/
 build/
 dist/
-app.spec
+*.spec

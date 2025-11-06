@@ -43,6 +43,13 @@ def docs_assets(filename):
     return send_from_directory(docs_assets_dir, filename)
 
 
+@app.route('/libs/<path:filename>')
+def docs_libs(filename):
+    docs_dir = get_docs_dir()
+    docs_libs_dir = os.path.abspath(os.path.join(docs_dir, 'libs'))
+    return send_from_directory(docs_libs_dir, filename)
+
+
 if __name__ == '__main__':
     app.run(
         host='0.0.0.0',
