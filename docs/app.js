@@ -12,6 +12,39 @@ var longitudeDisplay = document.querySelector('#gps_lon');
 var latitudeDisplay = document.querySelector('#gps_lat');
 var isRecordingDisplay = document.querySelector('#logging_status');
 
+// Measured current chart (uses Chart.js loaded in the page)
+var measuredCurrentChart = null;
+var measuredCurrentChartCanvas = document.getElementById('measured_current_chart');
+if (measuredCurrentChartCanvas && typeof Chart !== 'undefined') {
+  try {
+    var ctx = measuredCurrentChartCanvas.getContext('2d');
+    measuredCurrentChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Measured current (nA)',
+          data: [],
+          borderColor: 'rgb(75, 192, 192)',
+          backgroundColor: 'rgba(75, 192, 192, 0.2)',
+          fill: false,
+          pointRadius: 0,
+          tension: 0.15
+        }]
+      },
+      options: {
+        animation: false,
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { display: true },
+          y: { display: true }
+        }
+      }
+    });
+  } catch (e) { console.error('Chart init error', e); }
+}
+
 // Register bluetooth data sources, connect to parsers and display elements
 registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff12-0000-1000-8000-00805f9b34fb", blehandle_float, measuredCurrentDisplay, '')
 registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a37-0000-1000-8000-00805f9b34fb", blehandle_sint16, ozoneAQIDisplay, '')
@@ -226,4 +259,21 @@ function blehandle_float(event, TargetSelector, DataLog) {
       DataLog.push({ ts: new Date().toISOString(), value: Number(value.toFixed(6)) });
     }
   } catch (e) { console.error('Logging error', e); }
+  // Update live chart if this target is the measured-current display
+  try {
+    if (measuredCurrentChart && (TargetSelector === measuredCurrentDisplay || (TargetSelector && TargetSelector.id === 'measured_current'))) {
+      var ts = new Date();
+      var label = ts.toLocaleTimeString();
+      var y = Number(value.toFixed(6));
+      measuredCurrentChart.data.labels.push(label);
+      measuredCurrentChart.data.datasets[0].data.push(y);
+      // keep only the most recent N points
+      var maxPoints = 200;
+      if (measuredCurrentChart.data.labels.length > maxPoints) {
+        measuredCurrentChart.data.labels.shift();
+        measuredCurrentChart.data.datasets[0].data.shift();
+      }
+      measuredCurrentChart.update();
+    }
+  } catch (e) { console.error('Chart update error', e); }
 }
