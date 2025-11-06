@@ -7,7 +7,7 @@ var StartStopLoggingButton = document.querySelector('#start_stop_logging_button'
 
 // configure the display
 var measuredCurrentDisplay = document.querySelector('#measured_current');
-var ozoneAQIDisplay = document.querySelector('#ozone_aqi');
+var measuredTempDisplay = document.querySelector('#measured_temperature');
 var isRecordingDisplay = document.querySelector('#logging_status');
 
 // Measured current chart (uses Chart.js loaded in the page)
@@ -45,7 +45,7 @@ if (measuredCurrentChartCanvas && typeof Chart !== 'undefined') {
 
 // Register bluetooth data sources, connect to parsers and display elements
 registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff12-0000-1000-8000-00805f9b34fb", blehandle_float, measuredCurrentDisplay, '')
-registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a37-0000-1000-8000-00805f9b34fb", blehandle_sint16, ozoneAQIDisplay, '')
+registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a37-0000-1000-8000-00805f9b34fb", blehandle_sint16, measuredTempDisplay, '')
 
 // logging state
 var isLogging = false;
