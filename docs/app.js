@@ -8,8 +8,6 @@ var StartStopLoggingButton = document.querySelector('#start_stop_logging_button'
 // configure the display
 var measuredCurrentDisplay = document.querySelector('#measured_current');
 var ozoneAQIDisplay = document.querySelector('#ozone_aqi');
-var longitudeDisplay = document.querySelector('#gps_lon');
-var latitudeDisplay = document.querySelector('#gps_lat');
 var isRecordingDisplay = document.querySelector('#logging_status');
 
 // Measured current chart (uses Chart.js loaded in the page)
@@ -48,10 +46,6 @@ if (measuredCurrentChartCanvas && typeof Chart !== 'undefined') {
 // Register bluetooth data sources, connect to parsers and display elements
 registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff12-0000-1000-8000-00805f9b34fb", blehandle_float, measuredCurrentDisplay, '')
 registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a37-0000-1000-8000-00805f9b34fb", blehandle_sint16, ozoneAQIDisplay, '')
-
-registerBluetoothDataSource(BluetoothDataSources, 'environmental_sensing', 'latitude', blehandle_double, latitudeDisplay, '')
-registerBluetoothDataSource(BluetoothDataSources, 'environmental_sensing', 'longitude', blehandle_double, longitudeDisplay, '')
-
 
 // logging state
 var isLogging = false;
@@ -123,7 +117,6 @@ ConnectSourceButton.addEventListener('click', function() {
     optionalServices: [
       'battery_service',
       'generic_access',
-      'environmental_sensing',
       '0000180d-0000-1000-8000-00805f9b34fb', // 16-bit: Heart Rate (registered above)
       "0000ff10-0000-1000-8000-00805f9b34fb"
     ]
