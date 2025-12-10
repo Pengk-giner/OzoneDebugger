@@ -28,6 +28,15 @@ if (measuredCurrentChartCanvas && typeof Chart !== 'undefined') {
           fill: false,
           pointRadius: 0,
           tension: 0.15
+        }, {
+          label: 'Average current (nA)',
+          data: [],
+          borderColor: 'rgb(255, 99, 132)',
+          backgroundColor: 'rgba(255, 99, 132, 0.2)',
+          fill: false,
+          pointRadius: 0,
+          tension: 0.15,
+          borderDash: [5, 5]
         }]
       },
       options: {
@@ -42,6 +51,9 @@ if (measuredCurrentChartCanvas && typeof Chart !== 'undefined') {
     });
   } catch (e) { console.error('Chart init error', e); }
 }
+
+// Store raw data for filtering
+var measuredCurrentRawData = [];
 
 // Register bluetooth data sources, connect to parsers and display elements
 registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff12-0000-1000-8000-00805f9b34fb", blehandle_float, measuredCurrentDisplay, '')
@@ -258,13 +270,34 @@ function blehandle_float(event, TargetSelector, DataLog) {
       var ts = new Date();
       var label = ts.toLocaleTimeString();
       var y = Number(value.toFixed(6));
+      
+      // Store raw data point
+      measuredCurrentRawData.push(y);
+      
+      // Add raw point to chart
       measuredCurrentChart.data.labels.push(label);
       measuredCurrentChart.data.datasets[0].data.push(y);
+
+      // Compute rolling average of last N points and add to the average dataset
+      var avgWindow = 10;
+      var startIdx = Math.max(0, measuredCurrentRawData.length - avgWindow);
+      var sum = 0;
+      var count = 0;
+      for (var i = startIdx; i < measuredCurrentRawData.length; i++) {
+        var v = measuredCurrentRawData[i];
+        if (typeof v === 'number' && !isNaN(v)) { sum += v; count++; }
+      }
+      var averageValue = (count > 0) ? (sum / count) : null;
+      // push numeric average or null if no data
+      measuredCurrentChart.data.datasets[1].data.push( (averageValue !== null) ? averageValue : null );
+      
       // keep only the most recent N points
       var maxPoints = 200;
       if (measuredCurrentChart.data.labels.length > maxPoints) {
         measuredCurrentChart.data.labels.shift();
         measuredCurrentChart.data.datasets[0].data.shift();
+        measuredCurrentChart.data.datasets[1].data.shift();
+        measuredCurrentRawData.shift();
       }
       measuredCurrentChart.update();
     }
