@@ -76,3 +76,12 @@ body {
   font-weight: normal;
 
 }
+
+/* Reserve space at the bottom so fixed-bottom navbar doesn't overlap content */
+:root {
+  --bottom-bar-height: 88px; /* adjust if your navbar/buttons are taller */
+}
+
+body {
+  padding-bottom: var(--bottom-bar-height);
+}
