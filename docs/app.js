@@ -29,7 +29,7 @@ if (measuredCurrentChartCanvas && typeof Chart !== 'undefined') {
           pointRadius: 0,
           tension: 0.15
         }, {
-          label: 'Average current (nA)',
+          label: 'Filtered current (nA)',
           data: [],
           borderColor: 'rgb(255, 99, 132)',
           backgroundColor: 'rgba(255, 99, 132, 0.2)',
@@ -54,6 +54,10 @@ if (measuredCurrentChartCanvas && typeof Chart !== 'undefined') {
 
 // Store raw data for filtering
 var measuredCurrentRawData = [];
+// Low-pass filtered data (for averaging)
+var measuredCurrentLPData = [];
+// LP filter alpha (0..1). Smaller alpha -> smoother (slower) response.
+var lpAlpha = 0.2; // adjust as desired
 
 // Register bluetooth data sources, connect to parsers and display elements
 registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff12-0000-1000-8000-00805f9b34fb", blehandle_float, measuredCurrentDisplay, '')
@@ -178,10 +182,12 @@ function downloadDataLogs() {
   BluetoothDataSources.forEach(source => {
     var log = source.DataLog;
     if (!Array.isArray(log) || log.length === 0) return;
-    var rows = ['timestamp,value'];
+    // support entries with raw/filtered/average or legacy 'value'
+    var rows = ['timestamp,raw,filtered'];
     log.forEach(entry => {
-      // escape values if needed
-      rows.push(String(entry.ts) + ',' + String(entry.value));
+      var rawVal = (entry.raw !== undefined) ? entry.raw : (entry.value !== undefined ? entry.value : '');
+      var filteredavgVal = (entry.average !== undefined) ? entry.average : '';
+      rows.push(String(entry.ts) + ',' + String(rawVal) + ',' + String(filteredavgVal));
     });
     var csv = rows.join('\n');
     var blob = new Blob([csv], { type: 'text/csv' });
@@ -211,7 +217,15 @@ if (StartStopLoggingButton) {
     StartStopLoggingButton.textContent = isLogging ? 'Stop Logging' : 'Start Logging';
     if (!isLogging) {
       // when stopping, download logs
-      try { downloadDataLogs(); } catch (e) { console.error('Download error', e); }
+      try { 
+        downloadDataLogs(); 
+        // clear per-source DataLog buffers after download to free memory
+        try {
+          BluetoothDataSources.forEach(src => {
+            if (src && Array.isArray(src.DataLog)) src.DataLog.length = 0;
+          });
+        } catch (e) { console.error('Clearing DataLog error', e); }
+      } catch (e) { console.error('Download error', e); }
     }
   });
 }
@@ -248,9 +262,7 @@ function blehandle_double(event, TargetSelector, DataLog) {
   //console.log('Received: ' + value);
   TargetSelector.textContent = String(value.toFixed(6)) ;
   try {
-    if (isLogging && Array.isArray(DataLog)) {
-      DataLog.push({ ts: new Date().toISOString(), value: Number(value.toFixed(6)) });
-    }
+    // logging will push raw/filtered/average after LP and average are computed
   } catch (e) { console.error('Logging error', e); }
 }
 
@@ -259,46 +271,58 @@ function blehandle_float(event, TargetSelector, DataLog) {
   const value = event.target.value.getFloat32(0, true);
   //console.log('Received: ' + value);
   TargetSelector.textContent = String(value.toFixed(6)) ;
-  try {
-    if (isLogging && Array.isArray(DataLog)) {
-      DataLog.push({ ts: new Date().toISOString(), value: Number(value.toFixed(6)) });
-    }
-  } catch (e) { console.error('Logging error', e); }
+  // logging of raw/filtered values is handled after filtering so entries include both
   // Update live chart if this target is the measured-current display
   try {
     if (measuredCurrentChart && (TargetSelector === measuredCurrentDisplay || (TargetSelector && TargetSelector.id === 'measured_current'))) {
       var ts = new Date();
       var label = ts.toLocaleTimeString();
       var y = Number(value.toFixed(6));
-      
+
       // Store raw data point
       measuredCurrentRawData.push(y);
-      
+
+      // Apply low-pass filter (exponential smoothing) before averaging
+      var lp = y;
+      if (measuredCurrentLPData.length > 0) {
+        var prev = measuredCurrentLPData[measuredCurrentLPData.length - 1];
+        lp = lpAlpha * y + (1 - lpAlpha) * prev;
+      }
+      measuredCurrentLPData.push(lp);
+
       // Add raw point to chart
       measuredCurrentChart.data.labels.push(label);
       measuredCurrentChart.data.datasets[0].data.push(y);
 
-      // Compute rolling average of last N points and add to the average dataset
+      // Compute rolling average of last N filtered (LP) points and add to the average dataset
       var avgWindow = 10;
-      var startIdx = Math.max(0, measuredCurrentRawData.length - avgWindow);
+      var startIdx = Math.max(0, measuredCurrentLPData.length - avgWindow);
       var sum = 0;
       var count = 0;
-      for (var i = startIdx; i < measuredCurrentRawData.length; i++) {
-        var v = measuredCurrentRawData[i];
+      for (var i = startIdx; i < measuredCurrentLPData.length; i++) {
+        var v = measuredCurrentLPData[i];
         if (typeof v === 'number' && !isNaN(v)) { sum += v; count++; }
       }
       var averageValue = (count > 0) ? (sum / count) : null;
       // push numeric average or null if no data
       measuredCurrentChart.data.datasets[1].data.push( (averageValue !== null) ? averageValue : null );
-      
+
+      // If logging is enabled, save raw, filtered and average into the DataLog for this source
+      try {
+        if (isLogging && Array.isArray(DataLog)) {
+          DataLog.push({ ts: new Date().toISOString(), raw: y, average: (averageValue !== null) ? averageValue : null });
+        }
+      } catch (e) { console.error('Logging error (filtered)', e); }
+
       // keep only the most recent N points
       var maxPoints = 200;
-      if (measuredCurrentChart.data.labels.length > maxPoints) {
-        measuredCurrentChart.data.labels.shift();
-        measuredCurrentChart.data.datasets[0].data.shift();
-        measuredCurrentChart.data.datasets[1].data.shift();
-        measuredCurrentRawData.shift();
-      }
+        if (measuredCurrentChart.data.labels.length > maxPoints) {
+          measuredCurrentChart.data.labels.shift();
+          measuredCurrentChart.data.datasets[0].data.shift();
+          measuredCurrentChart.data.datasets[1].data.shift();
+          measuredCurrentRawData.shift();
+          measuredCurrentLPData.shift();
+        }
       measuredCurrentChart.update();
     }
   } catch (e) { console.error('Chart update error', e); }
