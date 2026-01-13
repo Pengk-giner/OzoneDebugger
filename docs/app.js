@@ -241,6 +241,48 @@ var measuredCurrentLPData = [];
 // LP filter alpha (0..1). Smaller alpha -> smoother (slower) response.
 var lpAlpha = 0.2; // adjust as desired
 
+// Auto-baseline update controls
+var autoBaselineCheckbox = document.getElementById('auto_baseline_checkbox');
+var baselineThrottleSamples = 5; // recompute every N incoming samples when auto enabled
+var baselineAutoCounter = 0;
+
+function recomputeBaselineAndApply() {
+  try {
+    if (!measuredCurrentChart) return;
+    var raw = measuredCurrentRawData.slice();
+    if (!raw || raw.length === 0) return;
+    var lambdaVal = Number(baselineLambdaInput && baselineLambdaInput.value) || 100;
+    var porderVal = Number(baselinePorderSelect && baselinePorderSelect.value) || 1;
+    var iterVal = Number(baselineIterInput && baselineIterInput.value) || 15;
+    var baseline = airPLS(raw, lambdaVal, porderVal, iterVal);
+
+    var N = measuredCurrentChart.data.datasets[0].data.length;
+    // Align baseline with chart (use last N points)
+    var baseToPlot = [];
+    if (baseline.length >= N) baseToPlot = baseline.slice(baseline.length - N);
+    else {
+      var pad = new Array(Math.max(0, N - baseline.length)).fill(null);
+      baseToPlot = pad.concat(baseline);
+    }
+    measuredCurrentChart.data.datasets[2].data = baseToPlot;
+
+    // Compute baseline-corrected (raw - baseline) for visible window and put into dataset 1
+    var rawVisible = measuredCurrentChart.data.datasets[0].data.slice();
+    var corrected = new Array(rawVisible.length).fill(null);
+    var baseLen = baseToPlot.length;
+    for (var i = 0; i < rawVisible.length; i++) {
+      var r = rawVisible[i];
+      var b = (i >= baseLen || baseToPlot[i] === null) ? 0 : baseToPlot[i];
+      if (r === null || r === undefined) corrected[i] = null; else corrected[i] = r - b;
+    }
+    measuredCurrentChart.data.datasets[1].data = corrected;
+
+    // show/hide baseline dataset according to checkbox
+    if (showBaselineCheckbox && showBaselineCheckbox.checked) measuredCurrentChart.data.datasets[2].hidden = false;
+    measuredCurrentChart.update();
+  } catch (e) { console.error('Auto baseline error', e); }
+}
+
 // Register bluetooth data sources, connect to parsers and display elements
 registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff12-0000-1000-8000-00805f9b34fb", blehandle_float, measuredCurrentDisplay, '')
 registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a37-0000-1000-8000-00805f9b34fb", blehandle_sint16, measuredTempDisplay, '')
@@ -506,6 +548,16 @@ function blehandle_float(event, TargetSelector, DataLog) {
           measuredCurrentLPData.shift();
         }
       measuredCurrentChart.update();
+      // Auto baseline update (throttled) when enabled
+      try {
+        if (autoBaselineCheckbox && autoBaselineCheckbox.checked) {
+          baselineAutoCounter++;
+          if (baselineAutoCounter >= baselineThrottleSamples) {
+            baselineAutoCounter = 0;
+            recomputeBaselineAndApply();
+          }
+        }
+      } catch (e) { console.error('Auto baseline trigger error', e); }
     }
   } catch (e) { console.error('Chart update error', e); }
 }
