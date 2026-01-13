@@ -37,6 +37,16 @@ if (measuredCurrentChartCanvas && typeof Chart !== 'undefined') {
           pointRadius: 0,
           tension: 0.15,
           borderDash: [5, 5]
+        }, {
+          label: 'Baseline (airPLS)',
+          data: [],
+          borderColor: 'rgb(54, 162, 235)',
+          backgroundColor: 'rgba(54, 162, 235, 0.05)',
+          fill: false,
+          pointRadius: 0,
+          tension: 0.15,
+          borderDash: [4, 4],
+          hidden: true
         }]
       },
       options: {
@@ -51,6 +61,178 @@ if (measuredCurrentChartCanvas && typeof Chart !== 'undefined') {
     });
   } catch (e) { console.error('Chart init error', e); }
 }
+
+// --- Baseline (airPLS) implementation (ported from Python) ---
+
+function binomial(n, k) {
+  if (k < 0 || k > n) return 0;
+  var res = 1;
+  for (var i = 1; i <= k; i++) {
+    res = res * (n - (k - i)) / i;
+  }
+  return Math.round(res);
+}
+
+function solveLinear(A, b) {
+  // Simple Gaussian elimination with partial pivoting (dense). A: array of arrays NxN, b: array length N
+  var n = A.length;
+  // copy
+  var M = new Array(n);
+  for (var i = 0; i < n; i++) { M[i] = A[i].slice(); }
+  var B = b.slice();
+
+  for (var k = 0; k < n; k++) {
+    // pivot
+    var maxRow = k;
+    var maxVal = Math.abs(M[k][k]);
+    for (var i = k + 1; i < n; i++) {
+      if (Math.abs(M[i][k]) > maxVal) { maxVal = Math.abs(M[i][k]); maxRow = i; }
+    }
+    if (maxRow !== k) {
+      var tmp = M[k]; M[k] = M[maxRow]; M[maxRow] = tmp;
+      var tb = B[k]; B[k] = B[maxRow]; B[maxRow] = tb;
+    }
+    if (Math.abs(M[k][k]) < 1e-12) {
+      // singular or ill-conditioned; fall back to returning b (no change)
+      return b.slice();
+    }
+    for (var i = k + 1; i < n; i++) {
+      var factor = M[i][k] / M[k][k];
+      B[i] -= factor * B[k];
+      for (var j = k; j < n; j++) {
+        M[i][j] -= factor * M[k][j];
+      }
+    }
+  }
+
+  var x = new Array(n);
+  for (var i = n - 1; i >= 0; i--) {
+    var s = B[i];
+    for (var j = i + 1; j < n; j++) s -= M[i][j] * x[j];
+    x[i] = s / M[i][i];
+  }
+  return x;
+}
+
+function whittakerSmooth(x, w, lambda_, differences) {
+  // x,w: arrays length m
+  var m = x.length;
+  if (m === 0) return [];
+  var p = Math.max(1, differences || 1);
+  if (m <= p) return x.slice();
+
+  var rows = m - p;
+  // compute forward difference coefficients for order p: c[k] = (-1)^k * C(p,k)
+  var coeffs = [];
+  for (var k = 0; k <= p; k++) coeffs.push((k % 2 === 0 ? 1 : -1) * binomial(p, k));
+
+  // Build D^T * D (m x m)
+  var DtD = new Array(m);
+  for (var i = 0; i < m; i++) { DtD[i] = new Array(m).fill(0); }
+  for (var i = 0; i < rows; i++) {
+    for (var a = 0; a <= p; a++) {
+      for (var b = 0; b <= p; b++) {
+        DtD[i + a][i + b] += coeffs[a] * coeffs[b];
+      }
+    }
+  }
+
+  // Build A = diag(w) + lambda * DtD
+  var A = new Array(m);
+  var B = new Array(m);
+  for (var i = 0; i < m; i++) {
+    A[i] = new Array(m).fill(0);
+    for (var j = 0; j < m; j++) A[i][j] = lambda_ * DtD[i][j];
+    A[i][i] += (w && w[i] !== undefined) ? w[i] : 1.0;
+    B[i] = ((w && w[i] !== undefined) ? w[i] : 1.0) * x[i];
+  }
+
+  var background = solveLinear(A, B);
+  return background;
+}
+
+function airPLS(x, lambda_, porder, itermax) {
+  var m = x.length;
+  if (m === 0) return [];
+  lambda_ = (lambda_ === undefined) ? 100 : lambda_;
+  porder = (porder === undefined) ? 1 : porder;
+  itermax = (itermax === undefined) ? 15 : itermax;
+
+  var w = new Array(m).fill(1.0);
+  var sumAbsX = 0;
+  for (var i = 0; i < m; i++) sumAbsX += Math.abs(x[i]);
+
+  var z = x.slice();
+  for (var iter = 1; iter <= itermax; iter++) {
+    z = whittakerSmooth(x, w, lambda_, porder);
+    var d = new Array(m);
+    for (var i = 0; i < m; i++) d[i] = x[i] - z[i];
+    // sum of negative differences
+    var dssn = 0;
+    var dnegMax = -Infinity;
+    for (var i = 0; i < m; i++) { if (d[i] < 0) { dssn += Math.abs(d[i]); if (d[i] > dnegMax) dnegMax = d[i]; } }
+    if (dssn === 0 || dssn < 0.001 * sumAbsX || iter === itermax) {
+      if (iter === itermax) console.warn('airPLS: max iteration reached');
+      break;
+    }
+    for (var i = 0; i < m; i++) {
+      if (d[i] >= 0) w[i] = 0; else w[i] = Math.exp(iter * Math.abs(d[i]) / dssn);
+    }
+    // endpoints
+    if (dnegMax === -Infinity) dnegMax = 0;
+    var endpointWeight = Math.exp(iter * Math.abs(dnegMax) / (dssn || 1));
+    w[0] = endpointWeight; w[m - 1] = endpointWeight;
+  }
+  return z;
+}
+
+// --- UI handlers for baseline ---
+try {
+  var applyBaselineButton = document.getElementById('apply_baseline_button');
+  var showBaselineCheckbox = document.getElementById('show_baseline_checkbox');
+  var baselineLambdaInput = document.getElementById('baseline_lambda');
+  var baselinePorderSelect = document.getElementById('baseline_porder');
+  var baselineIterInput = document.getElementById('baseline_itermax');
+
+  if (applyBaselineButton) {
+    applyBaselineButton.addEventListener('click', function () {
+      try {
+        if (!measuredCurrentChart) return;
+        var raw = measuredCurrentRawData.slice();
+        if (!raw || raw.length === 0) return;
+        var lambdaVal = Number(baselineLambdaInput && baselineLambdaInput.value) || 100;
+        var porderVal = Number(baselinePorderSelect && baselinePorderSelect.value) || 1;
+        var iterVal = Number(baselineIterInput && baselineIterInput.value) || 15;
+        var baseline = airPLS(raw, lambdaVal, porderVal, iterVal);
+
+        // Align baseline length with chart visible points
+        var N = measuredCurrentChart.data.datasets[0].data.length;
+        var baseToPlot = [];
+        if (baseline.length >= N) baseToPlot = baseline.slice(baseline.length - N);
+        else {
+          // pad with nulls at front to match length
+          var pad = new Array(Math.max(0, N - baseline.length)).fill(null);
+          baseToPlot = pad.concat(baseline);
+        }
+        measuredCurrentChart.data.datasets[2].data = baseToPlot;
+        measuredCurrentChart.update();
+        // ensure checkbox shows the baseline if it's checked
+        if (showBaselineCheckbox && showBaselineCheckbox.checked) {
+          measuredCurrentChart.getDatasetMeta(2).hidden = false;
+        }
+      } catch (e) { console.error('Apply baseline error', e); }
+    });
+  }
+
+  if (showBaselineCheckbox) {
+    showBaselineCheckbox.addEventListener('change', function () {
+      if (!measuredCurrentChart) return;
+      var hidden = !showBaselineCheckbox.checked;
+      measuredCurrentChart.data.datasets[2].hidden = hidden;
+      measuredCurrentChart.update();
+    });
+  }
+} catch (e) { console.error('Baseline UI init error', e); }
 
 // Store raw data for filtering
 var measuredCurrentRawData = [];

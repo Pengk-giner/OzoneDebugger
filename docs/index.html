@@ -61,6 +61,19 @@
             <div class="col-12 summary_box">
                 <div class="row"><div class="metric_title"> Measured Current Chart </div></div>
                 <div style="height:400px;">
+                    <div style="display:flex; gap:12px; align-items:center; margin-bottom:8px;">
+                        <label style="font-size:0.9em;">Baseline (airPLS):</label>
+                        <input id="baseline_lambda" type="number" step="1" value="100" style="width:80px;" title="Smoothing lambda"/>
+                        <label for="baseline_porder" style="font-size:0.9em;">order</label>
+                        <select id="baseline_porder" style="width:60px;">
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                        </select>
+                        <label for="baseline_itermax" style="font-size:0.9em;">iter</label>
+                        <input id="baseline_itermax" type="number" step="1" value="15" style="width:60px;"/>
+                        <button id="apply_baseline_button" class="button" type="button">Apply baseline</button>
+                        <label style="display:flex; align-items:center; gap:6px; margin-left:8px;"><input id="show_baseline_checkbox" type="checkbox"/> Show baseline</label>
+                    </div>
                     <canvas id="measured_current_chart" style="width:100%; height:100%; display:block;"></canvas>
                 </div>
             </div>
