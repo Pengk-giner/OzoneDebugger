@@ -446,11 +446,28 @@ function blehandle_float(event, TargetSelector, DataLog) {
         // Store raw data point
         measuredCurrentRawData.push(y);
 
-        // Apply low-pass filter (exponential smoothing)
-        var lp = y;
+        // Whitaker smoothing: compute smoothed value over last whitakerWindow raw points
+        var sval = null;
+        try {
+          if (measuredCurrentRawData.length >= whitakerWindow) {
+            var w = measuredCurrentRawData.slice(-whitakerWindow);
+            var sm = whittakerSmooth(w, whitakerLambda, whitakerDifferences);
+            sval = (Array.isArray(sm) && sm.length > 0) ? sm[sm.length - 1] : null;
+            measuredCurrentChart.data.datasets[2].data.push( (sval !== null && sval !== undefined) ? sval : null );
+          } else {
+            // keep alignment with null until enough points
+            measuredCurrentChart.data.datasets[2].data.push(null);
+          }
+        } catch (e) { console.error('Whitaker smoothing error', e); }
+
+        // Input to low-pass filter is the Whitaker output when available, otherwise raw value
+        var inputForLP = (sval !== null && sval !== undefined) ? sval : y;
+
+        // Apply low-pass filter (exponential smoothing) to Whitaker output (or raw until window filled)
+        var lp = inputForLP;
         if (measuredCurrentLPData.length > 0) {
           var prev = measuredCurrentLPData[measuredCurrentLPData.length - 1];
-          lp = lpAlpha * y + (1 - lpAlpha) * prev;
+          lp = lpAlpha * inputForLP + (1 - lpAlpha) * prev;
         }
         measuredCurrentLPData.push(lp);
 
@@ -459,7 +476,7 @@ function blehandle_float(event, TargetSelector, DataLog) {
         measuredCurrentChart.data.labels.push(label);
         measuredCurrentChart.data.datasets[0].data.push(y);
 
-        // Compute rolling average over last N filtered points
+        // Compute rolling average over last N filtered points (filtered now refers to LP applied to Whitaker)
         var avgWindow = 10;
         var startIdx = Math.max(0, measuredCurrentLPData.length - avgWindow);
         var sum = 0;
@@ -471,25 +488,12 @@ function blehandle_float(event, TargetSelector, DataLog) {
         var averageValue = (count > 0) ? (sum / count) : null;
         measuredCurrentChart.data.datasets[1].data.push( (averageValue !== null) ? averageValue : null );
 
-        // If logging is enabled, save raw and average into the DataLog for this source
+        // If logging is enabled, save raw, whitaker and average into the DataLog for this source
         try {
           if (isLogging && Array.isArray(DataLog)) {
-            DataLog.push({ ts: new Date().toISOString(), raw: y, average: (averageValue !== null) ? averageValue : null });
+            DataLog.push({ ts: new Date().toISOString(), raw: y, whitaker: (sval !== null && sval !== undefined) ? sval : null, average: (averageValue !== null) ? averageValue : null });
           }
         } catch (e) { console.error('Logging error (filtered)', e); }
-
-        // Whitaker smoothing: compute smoothed value over last whitakerWindow raw points
-        try {
-          if (measuredCurrentRawData.length >= whitakerWindow) {
-            var w = measuredCurrentRawData.slice(-whitakerWindow);
-            var sm = whittakerSmooth(w, whitakerLambda, whitakerDifferences);
-            var sval = (Array.isArray(sm) && sm.length > 0) ? sm[sm.length - 1] : null;
-            measuredCurrentChart.data.datasets[2].data.push( (sval !== null && sval !== undefined) ? sval : null );
-          } else {
-            // keep alignment with null until enough points
-            measuredCurrentChart.data.datasets[2].data.push(null);
-          }
-        } catch (e) { console.error('Whitaker smoothing error', e); }
       }
 
       // Trim to most recent N points (after adding the batch)
