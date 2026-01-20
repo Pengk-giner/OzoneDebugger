@@ -307,61 +307,77 @@ function blehandle_double(event, TargetSelector, DataLog) {
 
 function blehandle_float(event, TargetSelector, DataLog) {
   console.log(event.target.value.byteLength)
-  const value = event.target.value.getFloat32(0, true);
-  //console.log('Received: ' + value);
-  TargetSelector.textContent = String(value.toFixed(6)) ;
-  // logging of raw/filtered values is handled after filtering so entries include both
-  // Update live chart if this target is the measured-current display
+  // Support multiple Float32 samples in one characteristic notification.
+  // The incoming DataView (event.target.value) may contain N*4 bytes where each 4 bytes is a float32 (little-endian).
   try {
     if (measuredCurrentChart && (TargetSelector === measuredCurrentDisplay || (TargetSelector && TargetSelector.id === 'measured_current'))) {
+      var dv = event.target.value;
+      var byteLen = dv.byteLength || 0;
+      var floatSize = 4;
+      var sampleCount = Math.floor(byteLen / floatSize);
+      if (sampleCount <= 0) return;
+
+      // Use a single timestamp for the batch, but make labels unique by appending index/ms
       var ts = new Date();
-      var label = ts.toLocaleTimeString();
-      var y = Number(value.toFixed(6));
+      var baseLabel = ts.toLocaleTimeString();
+      var ms = ts.getMilliseconds();
 
-      // Store raw data point
-      measuredCurrentRawData.push(y);
-
-      // Apply low-pass filter (exponential smoothing) before averaging
-      var lp = y;
-      if (measuredCurrentLPData.length > 0) {
-        var prev = measuredCurrentLPData[measuredCurrentLPData.length - 1];
-        lp = lpAlpha * y + (1 - lpAlpha) * prev;
-      }
-      measuredCurrentLPData.push(lp);
-
-      // Add raw point to chart
-      measuredCurrentChart.data.labels.push(label);
-      measuredCurrentChart.data.datasets[0].data.push(y);
-
-      // Compute rolling average of last N filtered (LP) points and add to the average dataset
-      var avgWindow = 10;
-      var startIdx = Math.max(0, measuredCurrentLPData.length - avgWindow);
-      var sum = 0;
-      var count = 0;
-      for (var i = startIdx; i < measuredCurrentLPData.length; i++) {
-        var v = measuredCurrentLPData[i];
-        if (typeof v === 'number' && !isNaN(v)) { sum += v; count++; }
-      }
-      var averageValue = (count > 0) ? (sum / count) : null;
-      // push numeric average or null if no data
-      measuredCurrentChart.data.datasets[1].data.push( (averageValue !== null) ? averageValue : null );
-
-      // If logging is enabled, save raw, filtered and average into the DataLog for this source
-      try {
-        if (isLogging && Array.isArray(DataLog)) {
-          DataLog.push({ ts: new Date().toISOString(), raw: y, average: (averageValue !== null) ? averageValue : null });
+      for (var si = 0; si < sampleCount; si++) {
+        var raw = dv.getFloat32(si * floatSize, true);
+        // Display only the first sample value in the textual target (preserves existing behavior)
+        if (si === 0 && TargetSelector) {
+          try { TargetSelector.textContent = String(raw.toFixed(6)); } catch (e) {}
         }
-      } catch (e) { console.error('Logging error (filtered)', e); }
 
-      // keep only the most recent N points
+        var y = Number(raw);
+
+        // Store raw data point
+        measuredCurrentRawData.push(y);
+
+        // Apply low-pass filter (exponential smoothing)
+        var lp = y;
+        if (measuredCurrentLPData.length > 0) {
+          var prev = measuredCurrentLPData[measuredCurrentLPData.length - 1];
+          lp = lpAlpha * y + (1 - lpAlpha) * prev;
+        }
+        measuredCurrentLPData.push(lp);
+
+        // Create a unique label for each sample
+        var label = baseLabel + '.' + (ms < 100 ? ('0' + ms) : ms) + (sampleCount > 1 ? ('_' + si) : '');
+        measuredCurrentChart.data.labels.push(label);
+        measuredCurrentChart.data.datasets[0].data.push(y);
+
+        // Compute rolling average over last N filtered points
+        var avgWindow = 10;
+        var startIdx = Math.max(0, measuredCurrentLPData.length - avgWindow);
+        var sum = 0;
+        var count = 0;
+        for (var i = startIdx; i < measuredCurrentLPData.length; i++) {
+          var v = measuredCurrentLPData[i];
+          if (typeof v === 'number' && !isNaN(v)) { sum += v; count++; }
+        }
+        var averageValue = (count > 0) ? (sum / count) : null;
+        measuredCurrentChart.data.datasets[1].data.push( (averageValue !== null) ? averageValue : null );
+
+        // If logging is enabled, save raw and average into the DataLog for this source
+        try {
+          if (isLogging && Array.isArray(DataLog)) {
+            DataLog.push({ ts: new Date().toISOString(), raw: y, average: (averageValue !== null) ? averageValue : null });
+          }
+        } catch (e) { console.error('Logging error (filtered)', e); }
+      }
+
+      // Trim to most recent N points (after adding the batch)
       var maxPoints = 200;
-        if (measuredCurrentChart.data.labels.length > maxPoints) {
-          measuredCurrentChart.data.labels.shift();
-          measuredCurrentChart.data.datasets[0].data.shift();
-          measuredCurrentChart.data.datasets[1].data.shift();
-          measuredCurrentRawData.shift();
-          measuredCurrentLPData.shift();
-        }
+      while (measuredCurrentChart.data.labels.length > maxPoints) {
+        measuredCurrentChart.data.labels.shift();
+        measuredCurrentChart.data.datasets[0].data.shift();
+        measuredCurrentChart.data.datasets[1].data.shift();
+        measuredCurrentRawData.shift();
+        measuredCurrentLPData.shift();
+      }
+
+      // Update chart once per notification
       measuredCurrentChart.update();
     }
   } catch (e) { console.error('Chart update error', e); }
