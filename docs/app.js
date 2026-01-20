@@ -435,12 +435,21 @@ function blehandle_float(event, TargetSelector, DataLog) {
       var baseLabel = ts.toLocaleTimeString();
       var ms = ts.getMilliseconds();
 
+      // Read all samples into an array so we can compute batch statistics (average) and then process each sample
+      var samples = new Array(sampleCount);
+      var batchSum = 0;
       for (var si = 0; si < sampleCount; si++) {
-        var raw = dv.getFloat32(si * floatSize, true)*1e3; // convert to nA
-        // Display only the first sample value in the textual target (preserves existing behavior)
-        if (si === 0 && TargetSelector) {
-          try { TargetSelector.textContent = String(raw.toFixed(6)); } catch (e) {}
-        }
+        samples[si] = dv.getFloat32(si * floatSize, true) * 1e3; // convert to nA
+        batchSum += samples[si];
+      }
+      var batchAvg = batchSum / sampleCount;
+      // Display the average of the batch in the textual target
+      if (TargetSelector) {
+        try { TargetSelector.textContent = String(batchAvg.toFixed(6)); } catch (e) {}
+      }
+
+      for (var si = 0; si < sampleCount; si++) {
+        var raw = samples[si];
 
         var y = Number(raw);
 
