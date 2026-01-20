@@ -57,7 +57,7 @@ var measuredCurrentRawData = [];
 // Low-pass filtered data (for averaging)
 var measuredCurrentLPData = [];
 // LP filter alpha (0..1). Smaller alpha -> smoother (slower) response.
-var lpAlpha = 0.2; // adjust as desired
+var lpAlpha = 0.005; // adjust as desired
 
 // Register bluetooth data sources, connect to parsers and display elements
 registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff12-0000-1000-8000-00805f9b34fb", blehandle_float, measuredCurrentDisplay, '')
@@ -323,7 +323,7 @@ function blehandle_float(event, TargetSelector, DataLog) {
       var ms = ts.getMilliseconds();
 
       for (var si = 0; si < sampleCount; si++) {
-        var raw = dv.getFloat32(si * floatSize, true);
+        var raw = dv.getFloat32(si * floatSize, true)*1e3; // convert to nA
         // Display only the first sample value in the textual target (preserves existing behavior)
         if (si === 0 && TargetSelector) {
           try { TargetSelector.textContent = String(raw.toFixed(6)); } catch (e) {}
@@ -368,7 +368,7 @@ function blehandle_float(event, TargetSelector, DataLog) {
       }
 
       // Trim to most recent N points (after adding the batch)
-      var maxPoints = 200;
+      var maxPoints = 2000;
       while (measuredCurrentChart.data.labels.length > maxPoints) {
         measuredCurrentChart.data.labels.shift();
         measuredCurrentChart.data.datasets[0].data.shift();
