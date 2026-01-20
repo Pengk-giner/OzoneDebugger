@@ -37,7 +37,15 @@ if (measuredCurrentChartCanvas && typeof Chart !== 'undefined') {
           pointRadius: 0,
           tension: 0.15,
           borderDash: [5, 5]
-        }]
+          }, {
+            label: 'Whitaker smoothed (50pt)',
+            data: [],
+            borderColor: 'rgb(54, 162, 235)',
+            backgroundColor: 'rgba(54, 162, 235, 0.15)',
+            fill: false,
+            pointRadius: 0,
+            tension: 0.15
+          }]
       },
       options: {
         animation: false,
@@ -58,6 +66,110 @@ var measuredCurrentRawData = [];
 var measuredCurrentLPData = [];
 // LP filter alpha (0..1). Smaller alpha -> smoother (slower) response.
 var lpAlpha = 0.005; // adjust as desired
+// Whitaker smoothing configuration
+var whitakerWindow = 50; // number of most-recent raw points to feed into Whitaker smoother
+var whitakerLambda = 10000; // smoothing strength (larger -> smoother)
+var whitakerDifferences = 2; // order of differences (usually 1 or 2)
+
+// Whitaker (Eilers) smoothing implementation. Returns smoothed array same length as input y.
+function whittakerSmooth(y, lambda, differences) {
+  // y: array of numbers
+  var n = y.length;
+  if (n === 0) return [];
+  if (!differences || differences < 1) differences = 2;
+
+  // Build D matrix (m x n) where m = n - differences
+  var m = Math.max(0, n - differences);
+  var D = new Array(m);
+  for (var row = 0; row < m; row++) {
+    D[row] = new Array(n).fill(0);
+    // set finite difference coefficients for this row
+    // for order=1 it's [ -1, 1 ], for order=2 it's [1, -2, 1]
+    if (differences === 1) {
+      D[row][row] = -1;
+      D[row][row + 1] = 1;
+    } else if (differences === 2) {
+      D[row][row] = 1;
+      D[row][row + 1] = -2;
+      D[row][row + 2] = 1;
+    } else {
+      // build coefficients using binomial with alternating signs
+      for (var k = 0; k <= differences; k++) {
+        // binomial coefficient
+        var coeff = 1;
+        for (var a = 0; a < k; a++) coeff = coeff * (differences - a) / (a + 1);
+        // alternating sign
+        coeff = coeff * ( (k % 2) ? -1 : 1 );
+        D[row][row + k] = coeff;
+      }
+    }
+  }
+
+  // Build A = I + lambda * (D^T * D)
+  // Initialize A as identity
+  var A = new Array(n);
+  for (var i = 0; i < n; i++) {
+    A[i] = new Array(n).fill(0);
+    A[i][i] = 1;
+  }
+
+  // Compute BtB = D^T * D and add lambda * BtB into A
+  for (var i = 0; i < n; i++) {
+    for (var j = 0; j < n; j++) {
+      var sum = 0;
+      for (var r = 0; r < m; r++) {
+        sum += D[r][i] * D[r][j];
+      }
+      if (sum !== 0) A[i][j] += lambda * sum;
+    }
+  }
+
+  // Solve linear system A * z = y for z
+  // Use Gaussian elimination with partial pivoting (suitable for small n)
+  function solveLinearSystem(Ain, bin) {
+    var N = Ain.length;
+    // clone A and b
+    var A = new Array(N);
+    for (var i = 0; i < N; i++) A[i] = Ain[i].slice();
+    var b = bin.slice();
+
+    for (var k = 0; k < N; k++) {
+      // partial pivot
+      var maxRow = k;
+      var maxVal = Math.abs(A[k][k]);
+      for (var r = k + 1; r < N; r++) {
+        var val = Math.abs(A[r][k]);
+        if (val > maxVal) { maxVal = val; maxRow = r; }
+      }
+      if (maxRow !== k) {
+        var tmp = A[k]; A[k] = A[maxRow]; A[maxRow] = tmp;
+        var tb = b[k]; b[k] = b[maxRow]; b[maxRow] = tb;
+      }
+
+      var Akk = A[k][k];
+      if (Math.abs(Akk) < 1e-12) continue; // singular-ish; skip
+      // normalize and eliminate
+      for (var i = k + 1; i < N; i++) {
+        var factor = A[i][k] / Akk;
+        b[i] -= factor * b[k];
+        for (var j = k; j < N; j++) A[i][j] -= factor * A[k][j];
+      }
+    }
+
+    // back substitution
+    var x = new Array(N).fill(0);
+    for (var i = N - 1; i >= 0; i--) {
+      var s = b[i];
+      for (var j = i + 1; j < N; j++) s -= A[i][j] * x[j];
+      var aii = A[i][i];
+      x[i] = (Math.abs(aii) < 1e-12) ? s / ( (Math.abs(s) < 1e-12) ? 1 : aii ) : s / aii;
+    }
+    return x;
+  }
+
+  var z = solveLinearSystem(A, y.slice());
+  return z;
+}
 
 // Register bluetooth data sources, connect to parsers and display elements
 registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff12-0000-1000-8000-00805f9b34fb", blehandle_float, measuredCurrentDisplay, '')
@@ -365,6 +477,19 @@ function blehandle_float(event, TargetSelector, DataLog) {
             DataLog.push({ ts: new Date().toISOString(), raw: y, average: (averageValue !== null) ? averageValue : null });
           }
         } catch (e) { console.error('Logging error (filtered)', e); }
+
+        // Whitaker smoothing: compute smoothed value over last whitakerWindow raw points
+        try {
+          if (measuredCurrentRawData.length >= whitakerWindow) {
+            var w = measuredCurrentRawData.slice(-whitakerWindow);
+            var sm = whittakerSmooth(w, whitakerLambda, whitakerDifferences);
+            var sval = (Array.isArray(sm) && sm.length > 0) ? sm[sm.length - 1] : null;
+            measuredCurrentChart.data.datasets[2].data.push( (sval !== null && sval !== undefined) ? sval : null );
+          } else {
+            // keep alignment with null until enough points
+            measuredCurrentChart.data.datasets[2].data.push(null);
+          }
+        } catch (e) { console.error('Whitaker smoothing error', e); }
       }
 
       // Trim to most recent N points (after adding the batch)
@@ -373,6 +498,7 @@ function blehandle_float(event, TargetSelector, DataLog) {
         measuredCurrentChart.data.labels.shift();
         measuredCurrentChart.data.datasets[0].data.shift();
         measuredCurrentChart.data.datasets[1].data.shift();
+        if (measuredCurrentChart.data.datasets[2]) measuredCurrentChart.data.datasets[2].data.shift();
         measuredCurrentRawData.shift();
         measuredCurrentLPData.shift();
       }
