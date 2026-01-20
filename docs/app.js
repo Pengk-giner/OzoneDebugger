@@ -334,11 +334,12 @@ function downloadDataLogs() {
     var log = source.DataLog;
     if (!Array.isArray(log) || log.length === 0) return;
     // support entries with raw/filtered/average or legacy 'value'
-    var rows = ['timestamp,raw,filtered'];
+    var rows = ['timestamp,raw,whitaker,filtered'];
     log.forEach(entry => {
       var rawVal = (entry.raw !== undefined) ? entry.raw : (entry.value !== undefined ? entry.value : '');
+      var whitakerVal = (entry.whitaker !== undefined) ? entry.whitaker : '';
       var filteredavgVal = (entry.average !== undefined) ? entry.average : '';
-      rows.push(String(entry.ts) + ',' + String(rawVal) + ',' + String(filteredavgVal));
+      rows.push(String(entry.ts) + ',' + String(rawVal) + ',' + String(whitakerVal) + ',' + String(filteredavgVal));
     });
     var csv = rows.join('\n');
     var blob = new Blob([csv], { type: 'text/csv' });
