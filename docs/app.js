@@ -66,6 +66,41 @@ registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805
 // logging state
 var isLogging = false;
 
+// Restart button handler
+var RestartButton = document.querySelector('#restart_button');
+var RestartStatus = document.querySelector('#restart_status');
+
+function sendRestartCommand() {
+  if (!BluetoothDevices || BluetoothDevices.length === 0) {
+    RestartStatus.textContent = 'Not connected';
+    return;
+  }
+
+  var device = BluetoothDevices[0];
+  var serviceUUID = "0000ff10-0000-1000-8000-00805f9b34fb";
+  var characteristicUUID = "0000ff11-0000-1000-8000-00805f9b34fb";
+
+  device.gatt.connect()
+    .then(server => server.getPrimaryService(serviceUUID))
+    .then(service => service.getCharacteristic(characteristicUUID))
+    .then(characteristic => {
+      var data = new Uint8Array([0x01]);
+      return characteristic.writeValue(data);
+    })
+    .then(() => {
+      RestartStatus.textContent = 'Sent!';
+      setTimeout(() => { RestartStatus.textContent = ''; }, 2000);
+    })
+    .catch(error => {
+      console.error('Restart error:', error);
+      RestartStatus.textContent = 'Error: ' + error.message;
+    });
+}
+
+if (RestartButton) {
+  RestartButton.addEventListener('click', sendRestartCommand);
+}
+
 // Utility functions
 function registerBluetoothDataSource(BluetoothDataSourcesArray, BluetoothServiceUUID, BluetoothCharacteristicUUID, ValueHandler, TargetSelector, DataLog) {
   // Appends a data source, parser and target to the data sources list
@@ -138,6 +173,10 @@ ConnectSourceButton.addEventListener('click', function() {
     ]
   })
   .then(device => {
+    // Store device for later use (e.g., restart command)
+    if (!BluetoothDevices.includes(device)) {
+      BluetoothDevices.push(device);
+    }
     BluetoothDataSources.forEach(source => {
       connectBlueToothCharacteristic(device, source.BluetoothServiceUUID, source.BluetoothCharacteristicUUID, source.ValueHandler, source.TargetSelector, source.DataLog);
     })
