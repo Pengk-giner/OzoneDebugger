@@ -8,6 +8,7 @@ var StartStopLoggingButton = document.querySelector('#start_stop_logging_button'
 // configure the display
 var measuredCurrentDisplay = document.querySelector('#measured_current');
 var measuredTempDisplay = document.querySelector('#measured_temperature');
+var measuredHumidityDisplay = document.querySelector('#measured_humidity');
 var isRecordingDisplay = document.querySelector('#logging_status');
 
 // Measured current chart (uses Chart.js loaded in the page)
@@ -174,6 +175,7 @@ function whittakerSmooth(y, lambda, differences) {
 // Register bluetooth data sources, connect to parsers and display elements
 registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff12-0000-1000-8000-00805f9b34fb", blehandle_float, measuredCurrentDisplay, '')
 registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a37-0000-1000-8000-00805f9b34fb", blehandle_sint16, measuredTempDisplay, '')
+registerBluetoothDataSource(BluetoothDataSources, "0000181a-0000-1000-8000-00805f9b34fb", "00002a6f-0000-1000-8000-00805f9b34fb", blehandle_float, measuredHumidityDisplay, '')
 
 // logging state
 var isLogging = false;
@@ -196,7 +198,7 @@ function sendRestartCommand() {
     .then(server => server.getPrimaryService(serviceUUID))
     .then(service => service.getCharacteristic(characteristicUUID))
     .then(characteristic => {
-      var data = new Uint8Array([0x01]);
+      var data = new Uint8Array([0x00]);
       return characteristic.writeValue(data);
     })
     .then(() => {
