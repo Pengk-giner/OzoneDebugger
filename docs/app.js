@@ -215,6 +215,57 @@ if (RestartButton) {
   RestartButton.addEventListener('click', sendRestartCommand);
 }
 
+// Send Values button handler
+var SendValuesButton = document.querySelector('#send_values_button');
+var SendValuesStatus = document.querySelector('#send_values_status');
+
+function sendBiasVolt() {
+  if (!BluetoothDevices || BluetoothDevices.length === 0) {
+    SendValuesStatus.textContent = 'Not connected';
+    return;
+  }
+
+  var inputVzero = document.querySelector('#input_biasVolt');
+  var voltageValue = parseInt(inputVzero.value);
+
+  if (isNaN(voltageValue)) {
+    SendValuesStatus.textContent = 'Invalid value';
+    return;
+  }
+
+  // // Convert to int16_t (multiply by 100 to convert volts to centivolts)
+  // var intValue = Math.round(voltageValue * 100);
+  var intValue = voltageValue;
+
+  var device = BluetoothDevices[0];
+  var serviceUUID = "0000ff10-0000-1000-8000-00805f9b34fb";
+  var characteristicUUID = "0000ff11-0000-1000-8000-00805f9b34fb";
+
+  device.gatt.connect()
+    .then(server => server.getPrimaryService(serviceUUID))
+    .then(service => service.getCharacteristic(characteristicUUID))
+    .then(characteristic => {
+      // Create 3-byte buffer: [0x01, int16_value]
+      var buffer = new ArrayBuffer(3);
+      var view = new DataView(buffer);
+      view.setUint8(0, 0x01); // First byte = 0x01
+      view.setInt16(1, intValue, true); // Followed by int16_t (little-endian)
+      return characteristic.writeValue(buffer);
+    })
+    .then(() => {
+      SendValuesStatus.textContent = 'Sent!';
+      setTimeout(() => { SendValuesStatus.textContent = ''; }, 2000);
+    })
+    .catch(error => {
+      console.error('Send voltage error:', error);
+      SendValuesStatus.textContent = 'Error: ' + error.message;
+    });
+}
+
+if (SendValuesButton) {
+  SendValuesButton.addEventListener('click', sendBiasVolt);
+}
+
 // Utility functions
 function registerBluetoothDataSource(BluetoothDataSourcesArray, BluetoothServiceUUID, BluetoothCharacteristicUUID, ValueHandler, TargetSelector, DataLog) {
   // Appends a data source, parser and target to the data sources list
