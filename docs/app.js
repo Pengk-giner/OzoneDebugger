@@ -174,8 +174,7 @@ function whittakerSmooth(y, lambda, differences) {
 
 // Register bluetooth data sources, connect to parsers and display elements
 registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff12-0000-1000-8000-00805f9b34fb", blehandle_float, measuredCurrentDisplay, '')
-registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a37-0000-1000-8000-00805f9b34fb", blehandle_sint16, measuredTempDisplay, '')
-registerBluetoothDataSource(BluetoothDataSources, "0000181a-0000-1000-8000-00805f9b34fb", "00002a6f-0000-1000-8000-00805f9b34fb", blehandle_float, measuredHumidityDisplay, '')
+registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff13-0000-1000-8000-00805f9b34fb", blehandle_float_env_temp_humidity, measuredTempDisplay, '')
 
 // logging state
 var isLogging = false;
@@ -373,11 +372,23 @@ function blehandle_double(event, TargetSelector, DataLog) {
   TargetSelector.textContent = String(value.toFixed(6)) ;
 }
 
-function blehandle_float(event, TargetSelector, DataLog) {
+function blehandle_float_env(event, TargetSelector, DataLog) {
   console.log(event.target.value.byteLength)
   const value = event.target.value.getFloat32(0, true);
   //console.log('Received: ' + value);
   TargetSelector.textContent = String(value.toFixed(6)) ;
+}
+
+// Handler for combined temp/humidity characteristic (0xff13) - reads both values
+function blehandle_float_env_temp_humidity(event, TargetSelector, DataLog) {
+  console.log(event.target.value.byteLength)
+  const dv = event.target.value;
+  // Read humidity at offset 0 (second float32)
+  const humidityValue = dv.getFloat32(0, true);
+  measuredHumidityDisplay.textContent = String(humidityValue.toFixed(6));
+  // Read temperature at offset 4
+  const tempValue = dv.getFloat32(4, true);
+  measuredTempDisplay.textContent = String(tempValue.toFixed(6));
 }
 
 
