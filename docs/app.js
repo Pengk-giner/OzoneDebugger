@@ -385,10 +385,17 @@ function blehandle_float_env_temp_humidity(event, TargetSelector, DataLog) {
   const dv = event.target.value;
   // Read humidity at offset 0 (second float32)
   const humidityValue = dv.getFloat32(0, true);
-  measuredHumidityDisplay.textContent = String(humidityValue.toFixed(6));
+  measuredHumidityDisplay.textContent = String(humidityValue.toFixed(2));
   // Read temperature at offset 4
   const tempValue = dv.getFloat32(4, true);
-  measuredTempDisplay.textContent = String(tempValue.toFixed(6));
+  measuredTempDisplay.textContent = String(tempValue.toFixed(2));
+
+  // Log temperature and humidity data if logging is enabled
+  try {
+    if (isLogging && Array.isArray(DataLog)) {
+      DataLog.push({ ts: new Date().toISOString(), temp: tempValue, humid: humidityValue });
+    }
+  } catch (e) { console.error('Logging error (temp/humidity)', e); }
 }
 
 
@@ -397,13 +404,19 @@ function downloadDataLogs() {
   BluetoothDataSources.forEach(source => {
     var log = source.DataLog;
     if (!Array.isArray(log) || log.length === 0) return;
+    // Check if this is temp/humidity data (0xff13)
+    var isTempHumidity = (source.BluetoothCharacteristicUUID == "0000ff13-0000-1000-8000-00805f9b34fb");
     // support entries with raw/filtered/average or legacy 'value'
-    var rows = ['timestamp,raw,whitaker,filtered'];
+    var rows = [isTempHumidity ? 'timestamp,temperature,humidity' : 'timestamp,raw,whitaker,filtered'];
     log.forEach(entry => {
-      var rawVal = (entry.raw !== undefined) ? entry.raw : (entry.value !== undefined ? entry.value : '');
-      var whitakerVal = (entry.whitaker !== undefined) ? entry.whitaker : '';
-      var filteredavgVal = (entry.average !== undefined) ? entry.average : '';
-      rows.push(String(entry.ts) + ',' + String(rawVal) + ',' + String(whitakerVal) + ',' + String(filteredavgVal));
+      if (isTempHumidity) {
+        rows.push(String(entry.ts) + ',' + String(entry.temp) + ',' + String(entry.humid));
+      } else {
+        var rawVal = (entry.raw !== undefined) ? entry.raw : (entry.value !== undefined ? entry.value : '');
+        var whitakerVal = (entry.whitaker !== undefined) ? entry.whitaker : '';
+        var filteredavgVal = (entry.average !== undefined) ? entry.average : '';
+        rows.push(String(entry.ts) + ',' + String(rawVal) + ',' + String(whitakerVal) + ',' + String(filteredavgVal));
+      }
     });
     var csv = rows.join('\n');
     var blob = new Blob([csv], { type: 'text/csv' });
@@ -412,7 +425,11 @@ function downloadDataLogs() {
     var svc = String(source.BluetoothServiceUUID).replace(/[^0-9a-zA-Z_-]/g, '_');
     var chr = String(source.BluetoothCharacteristicUUID).replace(/[^0-9a-zA-Z_-]/g, '_');
     if (source.BluetoothServiceUUID == "0000ff10-0000-1000-8000-00805f9b34fb") {
-      svc = "measured_current";
+      if (source.BluetoothCharacteristicUUID == "0000ff13-0000-1000-8000-00805f9b34fb") {
+        svc = "temp_humidity";
+      } else {
+        svc = "measured_current";
+      }
     }
     a.download = svc + '_log.csv';
     a.href = url;
