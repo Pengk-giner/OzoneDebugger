@@ -8,6 +8,7 @@ var StartStopLoggingButton = document.querySelector('#start_stop_logging_button'
 // configure the display
 var measuredCurrentDisplay = document.querySelector('#measured_current');
 var measuredTempDisplay = document.querySelector('#measured_temperature');
+var measuredHumidityDisplay = document.querySelector('#measured_humidity');
 var isRecordingDisplay = document.querySelector('#logging_status');
 
 // Measured current chart (uses Chart.js loaded in the page)
@@ -173,10 +174,96 @@ function whittakerSmooth(y, lambda, differences) {
 
 // Register bluetooth data sources, connect to parsers and display elements
 registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff12-0000-1000-8000-00805f9b34fb", blehandle_float, measuredCurrentDisplay, '')
-registerBluetoothDataSource(BluetoothDataSources, "0000180d-0000-1000-8000-00805f9b34fb", "00002a37-0000-1000-8000-00805f9b34fb", blehandle_sint16, measuredTempDisplay, '')
+registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff13-0000-1000-8000-00805f9b34fb", blehandle_float_env_temp_humidity, measuredTempDisplay, '')
 
 // logging state
 var isLogging = false;
+
+// Restart button handler
+var RestartButton = document.querySelector('#restart_button');
+var RestartStatus = document.querySelector('#restart_status');
+
+function sendRestartCommand() {
+  if (!BluetoothDevices || BluetoothDevices.length === 0) {
+    RestartStatus.textContent = 'Not connected';
+    return;
+  }
+
+  var device = BluetoothDevices[0];
+  var serviceUUID = "0000ff10-0000-1000-8000-00805f9b34fb";
+  var characteristicUUID = "0000ff11-0000-1000-8000-00805f9b34fb";
+
+  device.gatt.connect()
+    .then(server => server.getPrimaryService(serviceUUID))
+    .then(service => service.getCharacteristic(characteristicUUID))
+    .then(characteristic => {
+      var data = new Uint8Array([0x00]);
+      return characteristic.writeValue(data);
+    })
+    .then(() => {
+      RestartStatus.textContent = 'Sent!';
+      setTimeout(() => { RestartStatus.textContent = ''; }, 2000);
+    })
+    .catch(error => {
+      console.error('Restart error:', error);
+      RestartStatus.textContent = 'Error: ' + error.message;
+    });
+}
+
+if (RestartButton) {
+  RestartButton.addEventListener('click', sendRestartCommand);
+}
+
+// Send Values button handler
+var SendValuesButton = document.querySelector('#send_values_button');
+var SendValuesStatus = document.querySelector('#send_values_status');
+
+function sendBiasVolt() {
+  if (!BluetoothDevices || BluetoothDevices.length === 0) {
+    SendValuesStatus.textContent = 'Not connected';
+    return;
+  }
+
+  var inputVzero = document.querySelector('#input_biasVolt');
+  var voltageValue = parseInt(inputVzero.value);
+
+  if (isNaN(voltageValue)) {
+    SendValuesStatus.textContent = 'Invalid value';
+    return;
+  }
+
+  // // Convert to int16_t (multiply by 100 to convert volts to centivolts)
+  // var intValue = Math.round(voltageValue * 100);
+  var intValue = voltageValue;
+
+  var device = BluetoothDevices[0];
+  var serviceUUID = "0000ff10-0000-1000-8000-00805f9b34fb";
+  var characteristicUUID = "0000ff11-0000-1000-8000-00805f9b34fb";
+
+  device.gatt.connect()
+    .then(server => server.getPrimaryService(serviceUUID))
+    .then(service => service.getCharacteristic(characteristicUUID))
+    .then(characteristic => {
+      // Create 3-byte buffer: [0x01, int16_value]
+      var buffer = new ArrayBuffer(3);
+      var view = new DataView(buffer);
+      view.setUint8(0, 0x01); // First byte = 0x01
+      view.setInt16(1, intValue, true); // Followed by int16_t (little-endian)
+      return characteristic.writeValue(buffer);
+    })
+    .then(() => {
+      SendValuesStatus.textContent = 'Sent!';
+      setTimeout(() => { SendValuesStatus.textContent = ''; }, 2000);
+    })
+    .catch(error => {
+      console.error('Send voltage error:', error);
+      SendValuesStatus.textContent = 'Error: ' + error.message;
+    });
+}
+
+if (SendValuesButton) {
+  SendValuesButton.addEventListener('click', sendBiasVolt);
+}
 
 // Utility functions
 function registerBluetoothDataSource(BluetoothDataSourcesArray, BluetoothServiceUUID, BluetoothCharacteristicUUID, ValueHandler, TargetSelector, DataLog) {
@@ -250,6 +337,10 @@ ConnectSourceButton.addEventListener('click', function() {
     ]
   })
   .then(device => {
+    // Store device for later use (e.g., restart command)
+    if (!BluetoothDevices.includes(device)) {
+      BluetoothDevices.push(device);
+    }
     BluetoothDataSources.forEach(source => {
       connectBlueToothCharacteristic(device, source.BluetoothServiceUUID, source.BluetoothCharacteristicUUID, source.ValueHandler, source.TargetSelector, source.DataLog);
     })
@@ -281,11 +372,23 @@ function blehandle_double(event, TargetSelector, DataLog) {
   TargetSelector.textContent = String(value.toFixed(6)) ;
 }
 
-function blehandle_float(event, TargetSelector, DataLog) {
+function blehandle_float_env(event, TargetSelector, DataLog) {
   console.log(event.target.value.byteLength)
   const value = event.target.value.getFloat32(0, true);
   //console.log('Received: ' + value);
   TargetSelector.textContent = String(value.toFixed(6)) ;
+}
+
+// Handler for combined temp/humidity characteristic (0xff13) - reads both values
+function blehandle_float_env_temp_humidity(event, TargetSelector, DataLog) {
+  console.log(event.target.value.byteLength)
+  const dv = event.target.value;
+  // Read humidity at offset 0 (second float32)
+  const humidityValue = dv.getFloat32(0, true);
+  measuredHumidityDisplay.textContent = String(humidityValue.toFixed(6));
+  // Read temperature at offset 4
+  const tempValue = dv.getFloat32(4, true);
+  measuredTempDisplay.textContent = String(tempValue.toFixed(6));
 }
 
 

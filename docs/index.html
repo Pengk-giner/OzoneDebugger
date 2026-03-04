@@ -35,14 +35,20 @@
                 <span id="measured_temperature">XX </span>
                 <span class="units">°F</span> </div>
         </div>
+        <div class="col summary_box" >
+            <div class="row"><div class="metric_title"> Humidity </div></div>
+            <div class="row metric_value">
+                <span id="measured_humidity">XX </span>
+                <span class="units">%</span> </div>
+        </div>
     </div>
     <div class="row">
         <div class="col summary_box">
             <div class="row"  style="margin-bottom: 20px;"><div class="metric_title"> Parameters </div></div>
             <div class="row" style="align-items:center; gap:12px;">
                 <div class="col-sm-4">
-                    <label for="input_vzero" class="form-label">Voltage - WE (V)</label>
-                    <input id="input_vzero" type="number" step="0.01" class="form-control" placeholder="e.g. 1.50" />
+                    <label for="input_biasVolt" class="form-label">Voltage(mV)</label>
+                    <input id="input_biasVolt" type="number" step="10" class="form-control" placeholder="e.g. 1000" />
                 </div>
                 <div class="col-sm-4">
                     <label for="input_vbias" class="form-label">Voltage - CE (V)</label>
