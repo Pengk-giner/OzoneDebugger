@@ -55,6 +55,23 @@ if (measuredCurrentChartCanvas && typeof Chart !== 'undefined') {
         scales: {
           x: { display: true },
           y: { display: true }
+        },
+        plugins: {
+          zoom: {
+            zoom: {
+              wheel: {
+                enabled: true,
+              },
+              pinch: {
+                enabled: true
+              },
+              mode: 'xy',
+            },
+            pan: {
+              enabled: true,
+              mode: 'xy',
+            }
+          }
         }
       }
     });
@@ -213,6 +230,50 @@ function sendRestartCommand() {
 if (RestartButton) {
   RestartButton.addEventListener('click', sendRestartCommand);
 }
+
+// // View Data Log button handler
+// var ViewDataLogButton = document.querySelector('#view_data_log_button');
+
+// function loadDataLogToChart() {
+//   if (!BluetoothDataSources || BluetoothDataSources.length === 0) {
+//     alert('No data sources connected');
+//     return;
+//   }
+
+//   // Find current data source
+//   var currentSource = BluetoothDataSources.find(src => 
+//     src.BluetoothCharacteristicUUID === "0000ff12-0000-1000-8000-00805f9b34fb"
+//   );
+
+//   if (!currentSource || !currentSource.DataLog || currentSource.DataLog.length === 0) {
+//     alert('No logged data available');
+//     return;
+//   }
+
+//   // Clear existing chart data
+//   measuredCurrentChart.data.labels = [];
+//   measuredCurrentChart.data.datasets[0].data = [];
+//   measuredCurrentChart.data.datasets[1].data = [];
+//   measuredCurrentChart.data.datasets[2].data = [];
+
+//   // Load all DataLog entries
+//   currentSource.DataLog.forEach(entry => {
+//     var date = new Date(entry.ts);
+//     var label = date.toLocaleString();
+    
+//     measuredCurrentChart.data.labels.push(label);
+//     measuredCurrentChart.data.datasets[0].data.push(entry.raw);
+//     measuredCurrentChart.data.datasets[1].data.push(entry.average);
+//     measuredCurrentChart.data.datasets[2].data.push(entry.whitaker);
+//   });
+
+//   measuredCurrentChart.update();
+//   alert(`Loaded ${currentSource.DataLog.length} logged data points. Use mouse wheel to zoom, drag to pan.`);
+// }
+
+// if (ViewDataLogButton) {
+//   ViewDataLogButton.addEventListener('click', loadDataLogToChart);
+// }
 
 // Send Values button handler
 var SendValuesButton = document.querySelector('#send_values_button');
