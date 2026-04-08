@@ -66,10 +66,17 @@ if (measuredCurrentChartCanvas && typeof Chart !== 'undefined') {
                 enabled: true
               },
               mode: 'xy',
+              drag: {
+                enabled: true,
+                borderColor: 'rgba(0,0,0,0.3)',
+                borderWidth: 1,
+                backgroundColor: 'rgba(75, 192, 192, 0.1)'
+              }
             },
             pan: {
               enabled: true,
               mode: 'xy',
+              modifiersKey: ''  // Allow pan without requiring modifier key (Shift/Ctrl/Alt)
             }
           }
         }
@@ -195,6 +202,17 @@ registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805
 
 // logging state
 var isLogging = false;
+
+// Reset Zoom button handler
+var ResetZoomButton = document.querySelector('#reset_zoom_button');
+
+if (ResetZoomButton) {
+  ResetZoomButton.addEventListener('click', function() {
+    if (measuredCurrentChart) {
+      measuredCurrentChart.resetZoom();
+    }
+  });
+}
 
 // Restart button handler
 var RestartButton = document.querySelector('#restart_button');
