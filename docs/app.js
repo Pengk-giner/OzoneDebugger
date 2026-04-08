@@ -76,7 +76,7 @@ if (measuredCurrentChartCanvas && typeof Chart !== 'undefined') {
             pan: {
               enabled: true,
               mode: 'xy',
-              modifiersKey: ''  // Allow pan without requiring modifier key (Shift/Ctrl/Alt)
+              modifiersKey: 'ctrl'  // Allow pan without requiring modifier key (Shift/Ctrl/Alt)
             }
           }
         }
@@ -203,16 +203,42 @@ registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805
 // logging state
 var isLogging = false;
 
-// Reset Zoom button handler
+// Track if user is in live view mode (auto-scrolling) or zoomed mode
+var isLiveViewMode = true;
+var maxLivePoints = 1000;  // Show last 1000 points in live view
+
+// Reset Zoom button handler - returns to live view mode showing last 1000 points
 var ResetZoomButton = document.querySelector('#reset_zoom_button');
 
 if (ResetZoomButton) {
   ResetZoomButton.addEventListener('click', function() {
     if (measuredCurrentChart) {
+      // Clear any zoom limits
       measuredCurrentChart.resetZoom();
+      
+      // Clear fixed scale limits
+      measuredCurrentChart.options.scales.x.min = undefined;
+      measuredCurrentChart.options.scales.x.max = undefined;
+      
+      // Switch to live view mode
+      isLiveViewMode = true;
+      
+      // Update immediately with latest data
+      measuredCurrentChart.update('none');
     }
   });
 }
+
+// Track when user manually zooms/pans (to switch out of live mode)
+function setupZoomTracking() {
+  if (measuredCurrentChart) {
+    measuredCurrentChart.canvas.addEventListener('mousedown', function() {
+      // User is interacting, switch out of live mode
+      isLiveViewMode = false;
+    });
+  }
+}
+setupZoomTracking();
 
 // Restart button handler
 var RestartButton = document.querySelector('#restart_button');
@@ -667,7 +693,8 @@ function blehandle_float(event, TargetSelector, DataLog) {
       }
 
       // Trim to most recent N points (after adding the batch)
-      var maxPoints = 2000;
+      // Increased to 50000 to allow viewing historical data while panning
+      var maxPoints = 50000;
       while (measuredCurrentChart.data.labels.length > maxPoints) {
         measuredCurrentChart.data.labels.shift();
         measuredCurrentChart.data.datasets[0].data.shift();
@@ -675,6 +702,19 @@ function blehandle_float(event, TargetSelector, DataLog) {
         if (measuredCurrentChart.data.datasets[2]) measuredCurrentChart.data.datasets[2].data.shift();
         measuredCurrentRawData.shift();
         measuredCurrentLPData.shift();
+      }
+
+      // In live view mode, auto-scroll to show last 1000 points
+      if (isLiveViewMode) {
+        var totalPoints = measuredCurrentChart.data.labels.length;
+        if (totalPoints > maxLivePoints) {
+          measuredCurrentChart.options.scales.x.min = totalPoints - maxLivePoints;
+          measuredCurrentChart.options.scales.x.max = totalPoints - 1;
+        } else {
+          // Clear limits if we have less than maxLivePoints
+          measuredCurrentChart.options.scales.x.min = undefined;
+          measuredCurrentChart.options.scales.x.max = undefined;
+        }
       }
 
       // Update chart once per notification
