@@ -275,49 +275,165 @@ if (RestartButton) {
   RestartButton.addEventListener('click', sendRestartCommand);
 }
 
-// // View Data Log button handler
-// var ViewDataLogButton = document.querySelector('#view_data_log_button');
+// DataLog modal chart instance
+var datalogChart = null;
 
-// function loadDataLogToChart() {
-//   if (!BluetoothDataSources || BluetoothDataSources.length === 0) {
-//     alert('No data sources connected');
-//     return;
-//   }
+// Plot DataLog button handler
+var PlotDataLogButton = document.querySelector('#plot_datalog_button');
 
-//   // Find current data source
-//   var currentSource = BluetoothDataSources.find(src => 
-//     src.BluetoothCharacteristicUUID === "0000ff12-0000-1000-8000-00805f9b34fb"
-//   );
+function loadDataLogToChart() {
+  if (!BluetoothDataSources || BluetoothDataSources.length === 0) {
+    alert('No data sources connected');
+    return;
+  }
 
-//   if (!currentSource || !currentSource.DataLog || currentSource.DataLog.length === 0) {
-//     alert('No logged data available');
-//     return;
-//   }
+  // Find current data source for measured current (0xff12)
+  var currentSource = BluetoothDataSources.find(src => 
+    src.BluetoothCharacteristicUUID === "0000ff12-0000-1000-8000-00805f9b34fb"
+  );
 
-//   // Clear existing chart data
-//   measuredCurrentChart.data.labels = [];
-//   measuredCurrentChart.data.datasets[0].data = [];
-//   measuredCurrentChart.data.datasets[1].data = [];
-//   measuredCurrentChart.data.datasets[2].data = [];
+  if (!currentSource || !currentSource.DataLog || currentSource.DataLog.length === 0) {
+    alert('No logged data available');
+    return;
+  }
 
-//   // Load all DataLog entries
-//   currentSource.DataLog.forEach(entry => {
-//     var date = new Date(entry.ts);
-//     var label = date.toLocaleString();
+  // Show the modal
+  var modal = document.getElementById('datalog_modal');
+  if (modal) {
+    modal.style.display = 'flex';
+  }
+
+  // Update the count display
+  var countDisplay = document.getElementById('datalog_count');
+  if (countDisplay) {
+    countDisplay.textContent = `(${currentSource.DataLog.length} data points)`;
+  }
+
+  // Prepare data arrays
+  var labels = [];
+  var rawData = [];
+  var averageData = [];
+  var whitakerData = [];
+
+  currentSource.DataLog.forEach(entry => {
+    var date = new Date(entry.ts);
+    var label = date.toLocaleString();
     
-//     measuredCurrentChart.data.labels.push(label);
-//     measuredCurrentChart.data.datasets[0].data.push(entry.raw);
-//     measuredCurrentChart.data.datasets[1].data.push(entry.average);
-//     measuredCurrentChart.data.datasets[2].data.push(entry.whitaker);
-//   });
+    labels.push(label);
+    rawData.push(entry.raw);
+    averageData.push(entry.average);
+    whitakerData.push(entry.whitaker);
+  });
 
-//   measuredCurrentChart.update();
-//   alert(`Loaded ${currentSource.DataLog.length} logged data points. Use mouse wheel to zoom, drag to pan.`);
-// }
+  // Create or update the datalog chart
+  var datalogCanvas = document.getElementById('datalog_chart');
+  if (!datalogCanvas) return;
 
-// if (ViewDataLogButton) {
-//   ViewDataLogButton.addEventListener('click', loadDataLogToChart);
-// }
+  var ctx = datalogCanvas.getContext('2d');
+  
+  // Destroy existing chart if any
+  if (datalogChart) {
+    datalogChart.destroy();
+  }
+
+  datalogChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Measured current (nA)',
+        data: rawData,
+        borderColor: 'rgb(75, 192, 192)',
+        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+        fill: false,
+        pointRadius: 0,
+        tension: 0.15
+      }, {
+        label: 'Filtered current (nA)',
+        data: averageData,
+        borderColor: 'rgb(255, 99, 132)',
+        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+        fill: false,
+        pointRadius: 0,
+        tension: 0.15,
+        borderDash: [5, 5]
+      }, {
+        label: 'Whitaker smoothed (50pt)',
+        data: whitakerData,
+        borderColor: 'rgb(54, 162, 235)',
+        backgroundColor: 'rgba(54, 162, 235, 0.15)',
+        fill: false,
+        pointRadius: 0,
+        tension: 0.15
+      }]
+    },
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { display: true },
+        y: { display: true }
+      },
+      plugins: {
+        zoom: {
+          zoom: {
+            wheel: { enabled: true },
+            pinch: { enabled: true },
+            mode: 'xy',
+            drag: {
+              enabled: true,
+              borderColor: 'rgba(0,0,0,0.3)',
+              borderWidth: 1,
+              backgroundColor: 'rgba(75, 192, 192, 0.1)'
+            }
+          },
+          pan: {
+            enabled: true,
+            mode: 'xy',
+            modifiersKey: 'ctrl'
+          }
+        }
+      }
+    }
+  });
+}
+
+// Setup modal close functionality
+var modal = document.getElementById('datalog_modal');
+var closeBtn = document.querySelector('.close');
+
+if (closeBtn) {
+  closeBtn.addEventListener('click', function() {
+    if (modal) modal.style.display = 'none';
+  });
+}
+
+// Close modal when clicking outside the content
+if (modal) {
+  modal.addEventListener('click', function(e) {
+    if (e.target === modal) {
+      modal.style.display = 'none';
+    }
+  });
+}
+
+// DataLog Reset Zoom button
+var datalogResetZoom = document.getElementById('datalog_reset_zoom');
+if (datalogResetZoom) {
+  datalogResetZoom.addEventListener('click', function() {
+    if (datalogChart) {
+      datalogChart.resetZoom();
+      datalogChart.options.scales.x.min = undefined;
+      datalogChart.options.scales.x.max = undefined;
+      datalogChart.update('none');
+    }
+  });
+}
+
+if (PlotDataLogButton) {
+  PlotDataLogButton.addEventListener('click', loadDataLogToChart);
+}
 
 // Send Values button handler
 var SendValuesButton = document.querySelector('#send_values_button');
@@ -694,7 +810,7 @@ function blehandle_float(event, TargetSelector, DataLog) {
 
       // Trim to most recent N points (after adding the batch)
       // Increased to 50000 to allow viewing historical data while panning
-      var maxPoints = 50000;
+      var maxPoints = 2000;
       while (measuredCurrentChart.data.labels.length > maxPoints) {
         measuredCurrentChart.data.labels.shift();
         measuredCurrentChart.data.datasets[0].data.shift();
