@@ -647,12 +647,14 @@ function downloadDataLogs() {
     var chr = String(source.BluetoothCharacteristicUUID).replace(/[^0-9a-zA-Z_-]/g, '_');
     if (source.BluetoothServiceUUID == "0000ff10-0000-1000-8000-00805f9b34fb") {
       if (source.BluetoothCharacteristicUUID == "0000ff13-0000-1000-8000-00805f9b34fb") {
-        svc = "temp_humidity";
+        svc = "humidity";
       } else {
-        svc = "measured_current";
+        svc = "current";
       }
     }
-    a.download = svc + '_log.csv';
+    
+    var date = new Date().toISOString();
+    a.download = svc + '_' + date + '.csv';
     a.href = url;
     document.body.appendChild(a);
     a.click();
@@ -783,8 +785,8 @@ function blehandle_float(event, TargetSelector, DataLog) {
         }
         measuredCurrentLPData.push(lp);
 
-        // Create a unique label for each sample
-        var label = baseLabel + '.' + (ms < 100 ? ('0' + ms) : ms) + (sampleCount > 1 ? ('_' + si) : '');
+        // Create a unique label for each sample with proper 3
+        var label = baseLabel + '.' + (ms < 100 ? ('0' + ms + si) : (ms + si));
         measuredCurrentChart.data.labels.push(label);
         measuredCurrentChart.data.datasets[0].data.push(y);
 
@@ -803,7 +805,7 @@ function blehandle_float(event, TargetSelector, DataLog) {
         // If logging is enabled, save raw, whitaker and average into the DataLog for this source
         try {
           if (isLogging && Array.isArray(DataLog)) {
-            DataLog.push({ ts: new Date().toISOString(), raw: y, whitaker: (sval !== null && sval !== undefined) ? sval : null, average: (averageValue !== null) ? averageValue : null });
+            DataLog.push({ ts: label, raw: y, whitaker: (sval !== null && sval !== undefined) ? sval : null, average: (averageValue !== null) ? averageValue : null });
           }
         } catch (e) { console.error('Logging error (filtered)', e); }
       }
