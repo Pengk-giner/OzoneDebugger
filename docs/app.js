@@ -801,14 +801,14 @@ function blehandle_float(event, TargetSelector, DataLog) {
         }
         var averageValue = (count > 0) ? (sum / count) : null;
         measuredCurrentChart.data.datasets[1].data.push( (averageValue !== null) ? averageValue : null );
-
-        // If logging is enabled, save raw, whitaker and average into the DataLog for this source
-        try {
-          if (isLogging && Array.isArray(DataLog)) {
-            DataLog.push({ ts: label, raw: y, whitaker: (sval !== null && sval !== undefined) ? sval : null, average: (averageValue !== null) ? averageValue : null });
-          }
-        } catch (e) { console.error('Logging error (filtered)', e); }
       }
+
+      // If logging is enabled, save raw, whitaker and average into the DataLog for this source
+      try {
+        if (isLogging && Array.isArray(DataLog)) {
+          DataLog.push({ ts: label, raw: y, whitaker: (sval !== null && sval !== undefined) ? sval : null, average: (averageValue !== null) ? averageValue : null });
+        }
+      } catch (e) { console.error('Logging error (filtered)', e); }
 
       // Trim to most recent N points (after adding the batch)
       // Increased to 50000 to allow viewing historical data while panning
