@@ -614,53 +614,69 @@ function blehandle_float_env_temp_humidity(event, TargetSelector, DataLog) {
   // Log temperature and humidity data if logging is enabled
   try {
     if (isLogging && Array.isArray(DataLog)) {
-      DataLog.push({ ts: new Date().toISOString(), temp: tempValue, humid: humidityValue });
+      DataLog.push({ ts: new Date().toLocaleTimeString(), temp: tempValue, humid: humidityValue });
     }
   } catch (e) { console.error('Logging error (temp/humidity)', e); }
 }
 
 
-// Helper to download per-source logs as CSV files
+// Helper to download combined logs as single CSV file
 function downloadDataLogs() {
-  BluetoothDataSources.forEach(source => {
-    var log = source.DataLog;
-    if (!Array.isArray(log) || log.length === 0) return;
-    // Check if this is temp/humidity data (0xff13)
-    var isTempHumidity = (source.BluetoothCharacteristicUUID == "0000ff13-0000-1000-8000-00805f9b34fb");
-    // support entries with raw/filtered/average or legacy 'value'
-    var rows = [isTempHumidity ? 'timestamp,temperature,humidity' : 'timestamp,raw,whitaker,filtered'];
-    log.forEach(entry => {
-      if (isTempHumidity) {
-        rows.push(String(entry.ts) + ',' + String(entry.temp) + ',' + String(entry.humid));
-      } else {
-        var rawVal = (entry.raw !== undefined) ? entry.raw : (entry.value !== undefined ? entry.value : '');
-        var whitakerVal = (entry.whitaker !== undefined) ? entry.whitaker : '';
-        var filteredavgVal = (entry.average !== undefined) ? entry.average : '';
-        rows.push(String(entry.ts) + ',' + String(rawVal) + ',' + String(whitakerVal) + ',' + String(filteredavgVal));
-      }
+  // Get both data sources
+  var currentSource = BluetoothDataSources.find(src => 
+    src.BluetoothCharacteristicUUID === "0000ff12-0000-1000-8000-00805f9b34fb"
+  );
+  var tempHumidSource = BluetoothDataSources.find(src => 
+    src.BluetoothCharacteristicUUID === "0000ff13-0000-1000-8000-00805f9b34fb"
+  );
+
+  // Create combined CSV rows with all columns
+  var rows = ['timestamp,current_raw,current_whitaker,current_filtered,temperature,humidity'];
+  
+  // Convert temp/humidity entries to sorted array of timestamps
+  var tempHumidMap = new Map();
+  if (tempHumidSource && Array.isArray(tempHumidSource.DataLog)) {
+    tempHumidSource.DataLog.forEach(entry => {
+      tempHumidMap.set(entry.ts, { temp: entry.temp, humid: entry.humid });
     });
-    var csv = rows.join('\n');
-    var blob = new Blob([csv], { type: 'text/csv' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    var svc = String(source.BluetoothServiceUUID).replace(/[^0-9a-zA-Z_-]/g, '_');
-    var chr = String(source.BluetoothCharacteristicUUID).replace(/[^0-9a-zA-Z_-]/g, '_');
-    if (source.BluetoothServiceUUID == "0000ff10-0000-1000-8000-00805f9b34fb") {
-      if (source.BluetoothCharacteristicUUID == "0000ff13-0000-1000-8000-00805f9b34fb") {
-        svc = "humidity";
-      } else {
-        svc = "current";
+    console.debug('tempHumidMap content:', Object.fromEntries(tempHumidMap));
+  } else {
+    console.debug('tempHumidSource not found or DataLog is not array:', tempHumidSource);
+  }
+
+  // Process all current entries and match with temp/humidity
+  if (currentSource && Array.isArray(currentSource.DataLog)) {
+    currentSource.DataLog.forEach(entry => {
+      var rawVal = (entry.raw !== undefined) ? entry.raw : (entry.value !== undefined ? entry.value : '');
+      var whitakerVal = (entry.whitaker !== undefined) ? entry.whitaker : '';
+      var filteredavgVal = (entry.average !== undefined) ? entry.average : '';
+
+      // Find matching temp/humidity for this timestamp (or nearest)
+      var temp = '';
+      var humid = '';
+      if (tempHumidMap.has(entry.ts)) {
+        var th = tempHumidMap.get(entry.ts);
+        temp = th.temp;
+        humid = th.humid;
+        // console.debug('tempHumid', humid, temp, 'matched for timestamp', entry.ts);
       }
-    }
-    
-    var date = new Date().toISOString();
-    a.download = svc + '_' + date + '.csv';
-    a.href = url;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  });
+
+      rows.push(String(entry.ts) + ',' + String(rawVal) + ',' + String(whitakerVal) + ',' + String(filteredavgVal) + ',' + String(temp) + ',' + String(humid));
+    });
+  }
+
+  // Download single combined CSV file
+  var csv = rows.join('\n');
+  var blob = new Blob([csv], { type: 'text/csv' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  var date = new Date().toISOString().replace(/[:.]/g, '-');
+  a.download = 'ozone_data_' + date + '.csv';
+  a.href = url;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // Start/Stop logging button behavior
@@ -786,7 +802,8 @@ function blehandle_float(event, TargetSelector, DataLog) {
         measuredCurrentLPData.push(lp);
 
         // Create a unique label for each sample with proper 3
-        var label = baseLabel + '.' + (ms < 100 ? ('0' + ms + si) : (ms + si));
+        // var label = baseLabel + '.' + (ms < 100 ? ('0' + ms + si) : (ms + si));
+        var label = baseLabel;
         measuredCurrentChart.data.labels.push(label);
         measuredCurrentChart.data.datasets[0].data.push(y);
 
