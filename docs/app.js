@@ -316,8 +316,8 @@ function loadDataLogToChart() {
   var whitakerData = [];
 
   currentSource.DataLog.forEach(entry => {
-    var date = new Date(entry.ts);
-    var label = date.toLocaleString();
+    // var date = new Date(entry.ts);
+    var label = entry.ts;
     
     labels.push(label);
     rawData.push(entry.raw);
