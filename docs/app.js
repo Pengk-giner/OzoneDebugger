@@ -614,7 +614,8 @@ function blehandle_float_env_temp_humidity(event, TargetSelector, DataLog) {
   // Log temperature and humidity data if logging is enabled
   try {
     if (isLogging && Array.isArray(DataLog)) {
-      DataLog.push({ ts: new Date().toLocaleTimeString(), temp: tempValue, humid: humidityValue });
+      var noteVal = document.getElementById('session_note') ? document.getElementById('session_note').value : '0';
+      DataLog.push({ ts: new Date().toLocaleTimeString(), temp: tempValue, humid: humidityValue, note: noteVal });
     }
   } catch (e) { console.error('Logging error (temp/humidity)', e); }
 }
@@ -631,7 +632,8 @@ function downloadDataLogs() {
   );
 
   // Create combined CSV rows with all columns
-  var rows = ['timestamp,current_raw,current_whitaker,current_filtered,temperature,humidity'];
+var sessionNote = document.getElementById('session_note') ? document.getElementById('session_note').value : '0';
+var rows = ['timestamp,current_raw,current_whitaker,current_filtered,temperature,humidity,note'];
   
   // Convert temp/humidity entries to sorted array of timestamps
   var tempHumidMap = new Map();
@@ -661,7 +663,8 @@ function downloadDataLogs() {
         // console.debug('tempHumid', humid, temp, 'matched for timestamp', entry.ts);
       }
 
-      rows.push(String(entry.ts) + ',' + String(rawVal) + ',' + String(whitakerVal) + ',' + String(filteredavgVal) + ',' + String(temp) + ',' + String(humid));
+      var entryNote = entry.note !== undefined ? entry.note : '0';
+      rows.push(String(entry.ts) + ',' + String(rawVal) + ',' + String(whitakerVal) + ',' + String(filteredavgVal) + ',' + String(temp) + ',' + String(humid) + ',' + String(entryNote));
     });
   }
 
@@ -823,7 +826,8 @@ function blehandle_float(event, TargetSelector, DataLog) {
       // If logging is enabled, save raw, whitaker and average into the DataLog for this source
       try {
         if (isLogging && Array.isArray(DataLog)) {
-          DataLog.push({ ts: label, raw: y, whitaker: (sval !== null && sval !== undefined) ? sval : null, average: (averageValue !== null) ? averageValue : null });
+          var noteVal = document.getElementById('session_note') ? document.getElementById('session_note').value : '0';
+          DataLog.push({ ts: label, raw: y, whitaker: (sval !== null && sval !== undefined) ? sval : null, average: (averageValue !== null) ? averageValue : null, note: noteVal });
         }
       } catch (e) { console.error('Logging error (filtered)', e); }
 
