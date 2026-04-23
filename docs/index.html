@@ -67,9 +67,13 @@
     <div class="row">
         <div class="col summary_box">
             <div class="row"><div class="metric_title"> Session Note </div></div>
-            <div class="row">
-                <div class="col">
+            <div class="row" style="align-items:center; gap:12px;">
+                <div class="col-sm-8">
                     <input id="session_note" type="text" class="form-control" placeholder="Enter note for this logging session" value="0" />
+                </div>
+                <div class="col-sm-4" style="display:flex; align-items:end;">
+                    <button id="apply_note_button" class="button" type="button">Apply Note</button>
+                    <span id="note_status" style="margin-left:12px; color:#444;"></span>
                 </div>
             </div>
         </div>

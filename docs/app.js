@@ -486,6 +486,22 @@ if (SendValuesButton) {
   SendValuesButton.addEventListener('click', sendBiasVolt);
 }
 
+// Apply Note button handler
+var ApplyNoteButton = document.querySelector('#apply_note_button');
+var NoteStatus = document.querySelector('#note_status');
+var currentActiveNote = '0'; // Store confirmed active note value
+
+if (ApplyNoteButton) {
+  ApplyNoteButton.addEventListener('click', function() {
+    var noteInput = document.getElementById('session_note');
+    if (noteInput) {
+      currentActiveNote = noteInput.value.trim() || '0';
+      NoteStatus.textContent = 'Note applied!';
+      setTimeout(() => { NoteStatus.textContent = ''; }, 2000);
+    }
+  });
+}
+
 // Utility functions
 function registerBluetoothDataSource(BluetoothDataSourcesArray, BluetoothServiceUUID, BluetoothCharacteristicUUID, ValueHandler, TargetSelector, DataLog) {
   // Appends a data source, parser and target to the data sources list
@@ -614,7 +630,7 @@ function blehandle_float_env_temp_humidity(event, TargetSelector, DataLog) {
   // Log temperature and humidity data if logging is enabled
   try {
     if (isLogging && Array.isArray(DataLog)) {
-      var noteVal = document.getElementById('session_note') ? document.getElementById('session_note').value : '0';
+      var noteVal = currentActiveNote;
       DataLog.push({ ts: new Date().toLocaleTimeString(), temp: tempValue, humid: humidityValue, note: noteVal });
     }
   } catch (e) { console.error('Logging error (temp/humidity)', e); }
@@ -826,7 +842,7 @@ function blehandle_float(event, TargetSelector, DataLog) {
       // If logging is enabled, save raw, whitaker and average into the DataLog for this source
       try {
         if (isLogging && Array.isArray(DataLog)) {
-          var noteVal = document.getElementById('session_note') ? document.getElementById('session_note').value : '0';
+          var noteVal = currentActiveNote;
           DataLog.push({ ts: label, raw: y, whitaker: (sval !== null && sval !== undefined) ? sval : null, average: (averageValue !== null) ? averageValue : null, note: noteVal });
         }
       } catch (e) { console.error('Logging error (filtered)', e); }
