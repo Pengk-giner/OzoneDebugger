@@ -1,77 +1,107 @@
-#!/usr/bin/env python3
-"""
-CSV Data Plotter
-Usage: python plot.py <csv_file> [--x X_COLUMN] [--y Y_COLUMN,Y_COLUMN2,...] [--type LINE|BAR|SCATTER]
-"""
-
-import sys
-import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 
-def plot_csv(csv_file, x_col=None, y_cols=None, plot_type='line', title=None, xlabel=None, ylabel=None):
-    """Plot data from a CSV file."""
-    # Read CSV file
-    df = pd.read_csv(csv_file)
-    
-    # Auto-detect columns if not specified
-    if y_cols is None:
-        y_cols = [df.columns[0]]
-    elif isinstance(y_cols, str):
-        y_cols = [c.strip() for c in y_cols.split(',')]
-    
-    # Set default title
-    if title is None:
-        if x_col is None:
-            title = f'{", ".join(y_cols)} by sequence'
-        else:
-            title = f'{", ".join(y_cols)} vs {x_col}'
-    if xlabel is None:
-        xlabel = 'sequence' if x_col is None else x_col
-    if ylabel is None:
-        ylabel = ', '.join(y_cols)
-    
-    # Create plot
-    fig, ax = plt.subplots(figsize=(10, 6))
-    
-    # Use sequence (index) for x-axis if x_col is None
-    if x_col is None:
-        x_data = range(len(df))
-    else:
-        x_data = df[x_col]
-    
-    # Plot each y column
-    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    for i, y_col in enumerate(y_cols):
-        if plot_type == 'line':
-            ax.plot(x_data, df[y_col], marker='o', linewidth=2, markersize=4, label=y_col, color=colors[i % len(colors)])
-        elif plot_type == 'bar':
-            ax.bar([x + i * 0.2 for x in range(len(df))], df[y_col], width=0.2, label=y_col, color=colors[i % len(colors)])
-        elif plot_type == 'scatter':
-            ax.scatter(x_data, df[y_col], s=50, label=y_col, color=colors[i % len(colors)])
-        else:
-            print(f"Unknown plot type: {plot_type}")
-            return
-    
-    ax.set_xlabel(xlabel, fontsize=12)
-    ax.set_ylabel(ylabel, fontsize=12)
-    ax.set_title(title, fontsize=14)
-    ax.grid(True, alpha=0.3)
-    if len(y_cols) > 1:
-        ax.legend()
-    
-    plt.tight_layout()
-    plt.show()
+# --- Load data ---
+df = pd.read_csv("ozone_data_2026-04-23T12-33-25-905Z.csv")
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Plot CSV data')
-    parser.add_argument('csv_file', help='Path to CSV file')
-    parser.add_argument('--x', help='X column name', default=None)
-    parser.add_argument('--y', help='Y column name(s), comma-separated for multiple', default='filtered')
-    parser.add_argument('--type', choices=['line', 'bar', 'scatter'], default='line', help='Plot type')
-    parser.add_argument('--title', help='Plot title', default=None)
-    parser.add_argument('--xlabel', help='X axis label', default='timestamp')
-    parser.add_argument('--ylabel', help='Y axis label', default=None)
-    
-    args = parser.parse_args()
-    plot_csv(args.csv_file, args.x, args.y, args.type, args.title, args.xlabel, args.ylabel)
+# --- Parse timestamp ---
+df["timestamp"] = pd.to_datetime(df["timestamp"], format="%I:%M:%S %p")
+
+# Use elapsed time (better for plotting)
+df["t_sec"] = (df["timestamp"] - df["timestamp"].iloc[0]).dt.total_seconds()
+
+# --- Clean note column ---
+df["note"] = pd.to_numeric(df["note"], errors="coerce").round().astype("Int64")
+
+# --- Signals ---
+signals = {
+    "current_raw":      "#378ADD",
+    "current_whitaker": "#1D9E75",
+    "current_filtered": "#D85A30",
+}
+
+fig, ax = plt.subplots(figsize=(14, 6))
+
+# --- Plot all signals normally (no note styling) ---
+for signal, color in signals.items():
+    ax.plot(
+        df["t_sec"],
+        df[signal],
+        color=color,
+        linewidth=1.5,
+        label=signal
+    )
+
+# --- Detect transitions (交叉点) ---
+transitions = df["note"].ne(df["note"].shift())
+
+# --- Highlight regions ---
+current_note = df["note"].iloc[0]
+start = df["t_sec"].iloc[0]
+
+colors = ["#f0f0f0", "#d0e7ff", "#e8f5e9", "#fff3e0"]  # rotate colors
+
+color_idx = 0
+y_top = ax.get_ylim()[1]  # top of plot (for placing text)
+
+for i in range(1, len(df)):
+    if transitions.iloc[i]:
+        end = df["t_sec"].iloc[i]
+
+        # Shade region
+        ax.axvspan(start, end, color=colors[color_idx % len(colors)], alpha=0.3)
+
+        # Vertical transition line
+        ax.axvline(end, color="gray", linestyle=":", linewidth=1)
+
+        # --- Add label (center of region) ---
+        x_mid = (start + end) / 2
+        ax.text(
+            x_mid,
+            y_top * 0.98,   # slightly below top
+            f"{current_note}",
+            ha="center",
+            va="top",
+            fontsize=9,
+            color="black",
+            alpha=0.8
+        )
+
+        # Move to next segment
+        start = end
+        current_note = df["note"].iloc[i]
+        color_idx += 1
+
+# --- Last region ---
+end = df["t_sec"].iloc[-1]
+
+ax.axvspan(start, end, color=colors[color_idx % len(colors)], alpha=0.3)
+
+x_mid = (start + end) / 2
+ax.text(
+    x_mid,
+    y_top * 0.98,
+    f"{current_note}",
+    ha="center",
+    va="top",
+    fontsize=9,
+    color="black",
+    alpha=0.8
+)
+# --- Labels ---
+ax.set_xlabel("Time (seconds)")
+ax.set_ylabel("Current (A)")
+ax.set_title("Sensor signals with note regions", fontsize=13)
+
+ax.grid(axis="y", color="lightgray", linewidth=0.5)
+ax.spines[["top", "right"]].set_visible(False)
+
+# --- Legend (signals only, clean) ---
+ax.legend(loc="upper right")
+
+plt.tight_layout()
+plt.savefig("sensor_plot.png", dpi=150)
+plt.show()
+
+print("Plot saved to sensor_plot.png")
