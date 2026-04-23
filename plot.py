@@ -58,7 +58,7 @@ for i in range(1, len(df)):
         # label
         x_mid = (start + end) / 2
         ax1.text(x_mid, ax1.get_ylim()[1]*0.98,
-                 f"note={current_note}",
+                 f"{current_note}",
                  ha="center", va="top", fontsize=8)
 
         start = end
@@ -67,7 +67,19 @@ for i in range(1, len(df)):
 
 # last region
 end = df["t_sec"].iloc[-1]
+
 ax1.axvspan(start, end, color=colors[color_idx % len(colors)], alpha=0.3)
+
+# add label (this was missing or inconsistent before)
+x_mid = (start + end) / 2
+ax1.text(
+    x_mid,
+    ax1.get_ylim()[1] * 0.98,
+    f"{current_note}",
+    ha="center",
+    va="top",
+    fontsize=8
+)
 
 # --- Combine legends from both axes ---
 lines_1, labels_1 = ax1.get_legend_handles_labels()
