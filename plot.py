@@ -1,95 +1,101 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+import os
+import glob
 
-# --- Load data ---
-df = pd.read_csv("data.csv")
+# --- Folder containing CSV files ---
+folder_path = "./"   # <-- change this to your folder
 
-# --- Parse time ---
-df["timestamp"] = pd.to_datetime(df["timestamp"], format="%I:%M:%S %p")
-df["t_sec"] = (df["timestamp"] - df["timestamp"].iloc[0]).dt.total_seconds()
+csv_files = glob.glob(os.path.join(folder_path, "*.csv"))
 
-# --- Clean note ---
-df["note"] = pd.to_numeric(df["note"], errors="coerce").round().astype("Int64")
+print(f"Found {len(csv_files)} CSV files")
 
-# --- Figure ---
-fig, ax1 = plt.subplots(figsize=(14, 6))
+for file in csv_files:
+    print(f"Processing: {file}")
 
-# --- Primary axis (currents) ---
-signals = {
-    "current_raw": "#378ADD",
-    "current_whitaker": "#1D9E75",
-    "current_filtered": "#D85A30",
-}
+    df = pd.read_csv(file)
 
-for signal, color in signals.items():
-    ax1.plot(df["t_sec"], df[signal], color=color, linewidth=1.5, label=signal)
+    # --- Parse time ---
+    df["timestamp"] = pd.to_datetime(df["timestamp"], format="%I:%M:%S %p")
+    df["t_sec"] = (df["timestamp"] - df["timestamp"].iloc[0]).dt.total_seconds()
 
-ax1.set_xlabel("Time (seconds)")
-ax1.set_ylabel("Current (A)")
-ax1.grid(axis="y", color="lightgray", linewidth=0.5)
+    # --- Clean note ---
+    df["note"] = pd.to_numeric(df["note"], errors="coerce").round().astype("Int64")
 
-# --- Secondary axis (temperature & humidity) ---
-ax2 = ax1.twinx()
+    # --- Create plot ---
+    fig, ax1 = plt.subplots(figsize=(14, 6))
 
-ax2.plot(df["t_sec"], df["temperature"],
-         color="red", linestyle="--", linewidth=1.5, label="temperature")
+    # --- Plot current signals ---
+    signals = {
+        "current_raw": "#378ADD",
+        "current_whitaker": "#1D9E75",
+        "current_filtered": "#D85A30",
+    }
 
-ax2.plot(df["t_sec"], df["humidity"],
-         color="purple", linestyle=":", linewidth=1.5, label="humidity")
+    for signal, color in signals.items():
+        ax1.plot(df["t_sec"], df[signal], color=color, linewidth=1.5, label=signal)
 
-ax2.set_ylabel("Temp / Humidity")
+    ax1.set_xlabel("Time (seconds)")
+    ax1.set_ylabel("Current (A)")
+    ax1.grid(axis="y", color="lightgray", linewidth=0.5)
 
-# --- Highlight note regions (same as before) ---
-transitions = df["note"].ne(df["note"].shift())
+    # --- Secondary axis (temp + humidity) ---
+    ax2 = ax1.twinx()
 
-colors = ["#f0f0f0", "#d0e7ff", "#e8f5e9", "#fff3e0"]
+    ax2.plot(df["t_sec"], df["temperature"],
+             color="red", linestyle="--", linewidth=1.2, label="temperature")
 
-start = df["t_sec"].iloc[0]
-current_note = df["note"].iloc[0]
-color_idx = 0
+    ax2.plot(df["t_sec"], df["humidity"],
+             color="purple", linestyle=":", linewidth=1.2, label="humidity")
 
-for i in range(1, len(df)):
-    if transitions.iloc[i]:
-        end = df["t_sec"].iloc[i]
+    ax2.set_ylabel("Temp / Humidity")
 
-        ax1.axvspan(start, end, color=colors[color_idx % len(colors)], alpha=0.3)
+    # --- Build note segments (robust, no missing last segment) ---
+    segments = []
+    start_idx = 0
+
+    for i in range(1, len(df)):
+        if df["note"].iloc[i] != df["note"].iloc[i - 1]:
+            segments.append((start_idx, i - 1))
+            start_idx = i
+
+    segments.append((start_idx, len(df) - 1))  # include last
+
+    # --- Highlight regions ---
+    colors = ["#f0f0f0", "#d0e7ff", "#e8f5e9", "#fff3e0"]
+
+    for j, (s, e) in enumerate(segments):
+        start = df["t_sec"].iloc[s]
+        end   = df["t_sec"].iloc[e]
+        note_val = df["note"].iloc[s]
+
+        ax1.axvspan(start, end, color=colors[j % len(colors)], alpha=0.3)
         ax1.axvline(end, color="gray", linestyle=":", linewidth=1)
 
         # label
         x_mid = (start + end) / 2
-        ax1.text(x_mid, ax1.get_ylim()[1]*0.98,
-                 f"{current_note}",
-                 ha="center", va="top", fontsize=8)
+        ax1.text(
+            x_mid,
+            ax1.get_ylim()[1] * 0.98,
+            f"note={note_val}",
+            ha="center",
+            va="top",
+            fontsize=8
+        )
 
-        start = end
-        current_note = df["note"].iloc[i]
-        color_idx += 1
+    # --- Legend ---
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper right")
 
-# last region
-end = df["t_sec"].iloc[-1]
+    # --- Save plot ---
+    filename = os.path.splitext(os.path.basename(file))[0]
+    output_path = os.path.join(folder_path, f"{filename}_plot.png")
 
-ax1.axvspan(start, end, color=colors[color_idx % len(colors)], alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    plt.show()
 
-# add label (this was missing or inconsistent before)
-x_mid = (start + end) / 2
-ax1.text(
-    x_mid,
-    ax1.get_ylim()[1] * 0.98,
-    f"{current_note}",
-    ha="center",
-    va="top",
-    fontsize=8
-)
+    print(f"Saved: {output_path}")
 
-# --- Combine legends from both axes ---
-lines_1, labels_1 = ax1.get_legend_handles_labels()
-lines_2, labels_2 = ax2.get_legend_handles_labels()
-
-ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc="upper right")
-
-# --- Final ---
-plt.tight_layout()
-plt.savefig("sensor_plot.png", dpi=150)
-plt.show()
-
-print("Plot saved to sensor_plot.png")
+print("Done.")
