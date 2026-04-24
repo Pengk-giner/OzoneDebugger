@@ -4,12 +4,12 @@ import os
 import glob
 
 # --- Folder containing CSV files ---
-folder_path = "./"   # <-- change this to your folder
+folder_path = "./data"   # <-- change this to your folder
 
 csv_files = glob.glob(os.path.join(folder_path, "*.csv"))
 
 print(f"Found {len(csv_files)} CSV files")
-
+    
 for file in csv_files:
     print(f"Processing: {file}")
 
@@ -86,7 +86,14 @@ for file in csv_files:
     # --- Legend ---
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper right")
+    # ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper right")
+    ax1.legend(
+        lines1 + lines2,
+        labels1 + labels2,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.15),
+        ncol=3
+    )
 
     # --- Save plot ---
     filename = os.path.splitext(os.path.basename(file))[0]
@@ -94,8 +101,8 @@ for file in csv_files:
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=150)
-    plt.show()
 
     print(f"Saved: {output_path}")
 
+plt.show()
 print("Done.")
