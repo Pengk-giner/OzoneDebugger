@@ -5,12 +5,15 @@ import glob
 
 # --- Folder containing CSV files ---
 folder_path = "./data"   # <-- change this to your folder
+output_dir = "./plots_png"    # <-- change this to your desired output folder
 
 csv_files = glob.glob(os.path.join(folder_path, "*.csv"))
 
 print(f"Found {len(csv_files)} CSV files")
     
 for file in csv_files:
+    filename = os.path.splitext(os.path.basename(file))[0]
+
     print(f"Processing: {file}")
 
     df = pd.read_csv(file)
@@ -20,7 +23,7 @@ for file in csv_files:
     df["t_sec"] = (df["timestamp"] - df["timestamp"].iloc[0]).dt.total_seconds()
 
     # --- Clean note ---
-    df["note"] = pd.to_numeric(df["note"], errors="coerce").round().astype("Int64")
+    df["note"] = df["note"].astype(str).str.strip()
 
     # --- Create plot ---
     fig, ax1 = plt.subplots(figsize=(14, 6))
@@ -36,7 +39,8 @@ for file in csv_files:
         ax1.plot(df["t_sec"], df[signal], color=color, linewidth=1.5, label=signal)
 
     ax1.set_xlabel("Time (seconds)")
-    ax1.set_ylabel("Current (A)")
+    ax1.set_ylabel("Current (uA)")
+    ax1.set_title(filename, fontsize=13)
     ax1.grid(axis="y", color="lightgray", linewidth=0.5)
 
     # --- Secondary axis (temp + humidity) ---
@@ -48,7 +52,7 @@ for file in csv_files:
     ax2.plot(df["t_sec"], df["humidity"],
              color="purple", linestyle=":", linewidth=1.2, label="humidity")
 
-    ax2.set_ylabel("Temp / Humidity")
+    ax2.set_ylabel("Temp °C / Humidity %")
 
     # --- Build note segments (robust, no missing last segment) ---
     segments = []
@@ -77,7 +81,7 @@ for file in csv_files:
         ax1.text(
             x_mid,
             ax1.get_ylim()[1] * 0.98,
-            f"note={note_val}",
+            f"{note_val}",
             ha="center",
             va="top",
             fontsize=8
@@ -97,7 +101,7 @@ for file in csv_files:
 
     # --- Save plot ---
     filename = os.path.splitext(os.path.basename(file))[0]
-    output_path = os.path.join(folder_path, f"{filename}_plot.png")
+    output_path = os.path.join(output_dir, f"{filename}_plot.png")
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=150)
