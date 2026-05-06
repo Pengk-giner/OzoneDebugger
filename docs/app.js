@@ -55,6 +55,30 @@ if (measuredCurrentChartCanvas && typeof Chart !== 'undefined') {
         scales: {
           x: { display: true },
           y: { display: true }
+        },
+        plugins: {
+          zoom: {
+            zoom: {
+              wheel: {
+                enabled: true,
+              },
+              pinch: {
+                enabled: true
+              },
+              mode: 'xy',
+              drag: {
+                enabled: true,
+                borderColor: 'rgba(0,0,0,0.3)',
+                borderWidth: 1,
+                backgroundColor: 'rgba(75, 192, 192, 0.1)'
+              }
+            },
+            pan: {
+              enabled: true,
+              mode: 'xy',
+              modifiersKey: 'ctrl'  // Allow pan without requiring modifier key (Shift/Ctrl/Alt)
+            }
+          }
         }
       }
     });
@@ -179,6 +203,43 @@ registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805
 // logging state
 var isLogging = false;
 
+// Track if user is in live view mode (auto-scrolling) or zoomed mode
+var isLiveViewMode = true;
+var maxLivePoints = 1000;  // Show last 1000 points in live view
+
+// Reset Zoom button handler - returns to live view mode showing last 1000 points
+var ResetZoomButton = document.querySelector('#reset_zoom_button');
+
+if (ResetZoomButton) {
+  ResetZoomButton.addEventListener('click', function() {
+    if (measuredCurrentChart) {
+      // Clear any zoom limits
+      measuredCurrentChart.resetZoom();
+      
+      // Clear fixed scale limits
+      measuredCurrentChart.options.scales.x.min = undefined;
+      measuredCurrentChart.options.scales.x.max = undefined;
+      
+      // Switch to live view mode
+      isLiveViewMode = true;
+      
+      // Update immediately with latest data
+      measuredCurrentChart.update('none');
+    }
+  });
+}
+
+// Track when user manually zooms/pans (to switch out of live mode)
+function setupZoomTracking() {
+  if (measuredCurrentChart) {
+    measuredCurrentChart.canvas.addEventListener('mousedown', function() {
+      // User is interacting, switch out of live mode
+      isLiveViewMode = false;
+    });
+  }
+}
+setupZoomTracking();
+
 // Restart button handler
 var RestartButton = document.querySelector('#restart_button');
 var RestartStatus = document.querySelector('#restart_status');
@@ -212,6 +273,166 @@ function sendRestartCommand() {
 
 if (RestartButton) {
   RestartButton.addEventListener('click', sendRestartCommand);
+}
+
+// DataLog modal chart instance
+var datalogChart = null;
+
+// Plot DataLog button handler
+var PlotDataLogButton = document.querySelector('#plot_datalog_button');
+
+function loadDataLogToChart() {
+  if (!BluetoothDataSources || BluetoothDataSources.length === 0) {
+    alert('No data sources connected');
+    return;
+  }
+
+  // Find current data source for measured current (0xff12)
+  var currentSource = BluetoothDataSources.find(src => 
+    src.BluetoothCharacteristicUUID === "0000ff12-0000-1000-8000-00805f9b34fb"
+  );
+
+  if (!currentSource || !currentSource.DataLog || currentSource.DataLog.length === 0) {
+    alert('No logged data available');
+    return;
+  }
+
+  // Show the modal
+  var modal = document.getElementById('datalog_modal');
+  if (modal) {
+    modal.style.display = 'flex';
+  }
+
+  // Update the count display
+  var countDisplay = document.getElementById('datalog_count');
+  if (countDisplay) {
+    countDisplay.textContent = `(${currentSource.DataLog.length} data points)`;
+  }
+
+  // Prepare data arrays
+  var labels = [];
+  var rawData = [];
+  var averageData = [];
+  var whitakerData = [];
+
+  currentSource.DataLog.forEach(entry => {
+    // var date = new Date(entry.ts);
+    var label = entry.ts;
+    
+    labels.push(label);
+    rawData.push(entry.raw);
+    averageData.push(entry.average);
+    whitakerData.push(entry.whitaker);
+  });
+
+  // Create or update the datalog chart
+  var datalogCanvas = document.getElementById('datalog_chart');
+  if (!datalogCanvas) return;
+
+  var ctx = datalogCanvas.getContext('2d');
+  
+  // Destroy existing chart if any
+  if (datalogChart) {
+    datalogChart.destroy();
+  }
+
+  datalogChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Measured current (nA)',
+        data: rawData,
+        borderColor: 'rgb(75, 192, 192)',
+        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+        fill: false,
+        pointRadius: 0,
+        tension: 0.15
+      }, {
+        label: 'Filtered current (nA)',
+        data: averageData,
+        borderColor: 'rgb(255, 99, 132)',
+        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+        fill: false,
+        pointRadius: 0,
+        tension: 0.15,
+        borderDash: [5, 5]
+      }, {
+        label: 'Whitaker smoothed (50pt)',
+        data: whitakerData,
+        borderColor: 'rgb(54, 162, 235)',
+        backgroundColor: 'rgba(54, 162, 235, 0.15)',
+        fill: false,
+        pointRadius: 0,
+        tension: 0.15
+      }]
+    },
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { display: true },
+        y: { display: true }
+      },
+      plugins: {
+        zoom: {
+          zoom: {
+            wheel: { enabled: true },
+            pinch: { enabled: true },
+            mode: 'xy',
+            drag: {
+              enabled: true,
+              borderColor: 'rgba(0,0,0,0.3)',
+              borderWidth: 1,
+              backgroundColor: 'rgba(75, 192, 192, 0.1)'
+            }
+          },
+          pan: {
+            enabled: true,
+            mode: 'xy',
+            modifiersKey: 'ctrl'
+          }
+        }
+      }
+    }
+  });
+}
+
+// Setup modal close functionality
+var modal = document.getElementById('datalog_modal');
+var closeBtn = document.querySelector('.close');
+
+if (closeBtn) {
+  closeBtn.addEventListener('click', function() {
+    if (modal) modal.style.display = 'none';
+  });
+}
+
+// Close modal when clicking outside the content
+if (modal) {
+  modal.addEventListener('click', function(e) {
+    if (e.target === modal) {
+      modal.style.display = 'none';
+    }
+  });
+}
+
+// DataLog Reset Zoom button
+var datalogResetZoom = document.getElementById('datalog_reset_zoom');
+if (datalogResetZoom) {
+  datalogResetZoom.addEventListener('click', function() {
+    if (datalogChart) {
+      datalogChart.resetZoom();
+      datalogChart.options.scales.x.min = undefined;
+      datalogChart.options.scales.x.max = undefined;
+      datalogChart.update('none');
+    }
+  });
+}
+
+if (PlotDataLogButton) {
+  PlotDataLogButton.addEventListener('click', loadDataLogToChart);
 }
 
 // Send Values button handler
@@ -263,6 +484,22 @@ function sendBiasVolt() {
 
 if (SendValuesButton) {
   SendValuesButton.addEventListener('click', sendBiasVolt);
+}
+
+// Apply Note button handler
+var ApplyNoteButton = document.querySelector('#apply_note_button');
+var NoteStatus = document.querySelector('#note_status');
+var currentActiveNote = '0'; // Store confirmed active note value
+
+if (ApplyNoteButton) {
+  ApplyNoteButton.addEventListener('click', function() {
+    var noteInput = document.getElementById('session_note');
+    if (noteInput) {
+      currentActiveNote = noteInput.value.trim() || '0';
+      NoteStatus.textContent = 'Note applied!';
+      setTimeout(() => { NoteStatus.textContent = ''; }, 2000);
+    }
+  });
 }
 
 // Utility functions
@@ -393,51 +630,72 @@ function blehandle_float_env_temp_humidity(event, TargetSelector, DataLog) {
   // Log temperature and humidity data if logging is enabled
   try {
     if (isLogging && Array.isArray(DataLog)) {
-      DataLog.push({ ts: new Date().toISOString(), temp: tempValue, humid: humidityValue });
+      var noteVal = currentActiveNote;
+      DataLog.push({ ts: new Date().toLocaleTimeString(), temp: tempValue, humid: humidityValue, note: noteVal });
     }
   } catch (e) { console.error('Logging error (temp/humidity)', e); }
 }
 
 
-// Helper to download per-source logs as CSV files
+// Helper to download combined logs as single CSV file
 function downloadDataLogs() {
-  BluetoothDataSources.forEach(source => {
-    var log = source.DataLog;
-    if (!Array.isArray(log) || log.length === 0) return;
-    // Check if this is temp/humidity data (0xff13)
-    var isTempHumidity = (source.BluetoothCharacteristicUUID == "0000ff13-0000-1000-8000-00805f9b34fb");
-    // support entries with raw/filtered/average or legacy 'value'
-    var rows = [isTempHumidity ? 'timestamp,temperature,humidity' : 'timestamp,raw,whitaker,filtered'];
-    log.forEach(entry => {
-      if (isTempHumidity) {
-        rows.push(String(entry.ts) + ',' + String(entry.temp) + ',' + String(entry.humid));
-      } else {
-        var rawVal = (entry.raw !== undefined) ? entry.raw : (entry.value !== undefined ? entry.value : '');
-        var whitakerVal = (entry.whitaker !== undefined) ? entry.whitaker : '';
-        var filteredavgVal = (entry.average !== undefined) ? entry.average : '';
-        rows.push(String(entry.ts) + ',' + String(rawVal) + ',' + String(whitakerVal) + ',' + String(filteredavgVal));
-      }
+  // Get both data sources
+  var currentSource = BluetoothDataSources.find(src => 
+    src.BluetoothCharacteristicUUID === "0000ff12-0000-1000-8000-00805f9b34fb"
+  );
+  var tempHumidSource = BluetoothDataSources.find(src => 
+    src.BluetoothCharacteristicUUID === "0000ff13-0000-1000-8000-00805f9b34fb"
+  );
+
+  // Create combined CSV rows with all columns
+var sessionNote = document.getElementById('session_note') ? document.getElementById('session_note').value : '0';
+var rows = ['timestamp,current_raw,current_whitaker,current_filtered,temperature,humidity,note'];
+  
+  // Convert temp/humidity entries to sorted array of timestamps
+  var tempHumidMap = new Map();
+  if (tempHumidSource && Array.isArray(tempHumidSource.DataLog)) {
+    tempHumidSource.DataLog.forEach(entry => {
+      tempHumidMap.set(entry.ts, { temp: entry.temp, humid: entry.humid });
     });
-    var csv = rows.join('\n');
-    var blob = new Blob([csv], { type: 'text/csv' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    var svc = String(source.BluetoothServiceUUID).replace(/[^0-9a-zA-Z_-]/g, '_');
-    var chr = String(source.BluetoothCharacteristicUUID).replace(/[^0-9a-zA-Z_-]/g, '_');
-    if (source.BluetoothServiceUUID == "0000ff10-0000-1000-8000-00805f9b34fb") {
-      if (source.BluetoothCharacteristicUUID == "0000ff13-0000-1000-8000-00805f9b34fb") {
-        svc = "temp_humidity";
-      } else {
-        svc = "measured_current";
+    console.debug('tempHumidMap content:', Object.fromEntries(tempHumidMap));
+  } else {
+    console.debug('tempHumidSource not found or DataLog is not array:', tempHumidSource);
+  }
+
+  // Process all current entries and match with temp/humidity
+  if (currentSource && Array.isArray(currentSource.DataLog)) {
+    currentSource.DataLog.forEach(entry => {
+      var rawVal = (entry.raw !== undefined) ? entry.raw : (entry.value !== undefined ? entry.value : '');
+      var whitakerVal = (entry.whitaker !== undefined) ? entry.whitaker : '';
+      var filteredavgVal = (entry.average !== undefined) ? entry.average : '';
+
+      // Find matching temp/humidity for this timestamp (or nearest)
+      var temp = '';
+      var humid = '';
+      if (tempHumidMap.has(entry.ts)) {
+        var th = tempHumidMap.get(entry.ts);
+        temp = th.temp;
+        humid = th.humid;
+        // console.debug('tempHumid', humid, temp, 'matched for timestamp', entry.ts);
       }
-    }
-    a.download = svc + '_log.csv';
-    a.href = url;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  });
+
+      var entryNote = entry.note !== undefined ? entry.note : '0';
+      rows.push(String(entry.ts) + ',' + String(rawVal) + ',' + String(whitakerVal) + ',' + String(filteredavgVal) + ',' + String(temp) + ',' + String(humid) + ',' + String(entryNote));
+    });
+  }
+
+  // Download single combined CSV file
+  var csv = rows.join('\n');
+  var blob = new Blob([csv], { type: 'text/csv' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  var date = new Date().toISOString().replace(/[:.]/g, '-');
+  a.download = 'ozone_data_' + date + '.csv';
+  a.href = url;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // Start/Stop logging button behavior
@@ -562,8 +820,9 @@ function blehandle_float(event, TargetSelector, DataLog) {
         }
         measuredCurrentLPData.push(lp);
 
-        // Create a unique label for each sample
-        var label = baseLabel + '.' + (ms < 100 ? ('0' + ms) : ms) + (sampleCount > 1 ? ('_' + si) : '');
+        // Create a unique label for each sample with proper 3
+        // var label = baseLabel + '.' + (ms < 100 ? ('0' + ms + si) : (ms + si));
+        var label = baseLabel;
         measuredCurrentChart.data.labels.push(label);
         measuredCurrentChart.data.datasets[0].data.push(y);
 
@@ -578,16 +837,18 @@ function blehandle_float(event, TargetSelector, DataLog) {
         }
         var averageValue = (count > 0) ? (sum / count) : null;
         measuredCurrentChart.data.datasets[1].data.push( (averageValue !== null) ? averageValue : null );
-
-        // If logging is enabled, save raw, whitaker and average into the DataLog for this source
-        try {
-          if (isLogging && Array.isArray(DataLog)) {
-            DataLog.push({ ts: new Date().toISOString(), raw: y, whitaker: (sval !== null && sval !== undefined) ? sval : null, average: (averageValue !== null) ? averageValue : null });
-          }
-        } catch (e) { console.error('Logging error (filtered)', e); }
       }
 
+      // If logging is enabled, save raw, whitaker and average into the DataLog for this source
+      try {
+        if (isLogging && Array.isArray(DataLog)) {
+          var noteVal = currentActiveNote;
+          DataLog.push({ ts: label, raw: y, whitaker: (sval !== null && sval !== undefined) ? sval : null, average: (averageValue !== null) ? averageValue : null, note: noteVal });
+        }
+      } catch (e) { console.error('Logging error (filtered)', e); }
+
       // Trim to most recent N points (after adding the batch)
+      // Increased to 50000 to allow viewing historical data while panning
       var maxPoints = 2000;
       while (measuredCurrentChart.data.labels.length > maxPoints) {
         measuredCurrentChart.data.labels.shift();
@@ -596,6 +857,19 @@ function blehandle_float(event, TargetSelector, DataLog) {
         if (measuredCurrentChart.data.datasets[2]) measuredCurrentChart.data.datasets[2].data.shift();
         measuredCurrentRawData.shift();
         measuredCurrentLPData.shift();
+      }
+
+      // In live view mode, auto-scroll to show last 1000 points
+      if (isLiveViewMode) {
+        var totalPoints = measuredCurrentChart.data.labels.length;
+        if (totalPoints > maxLivePoints) {
+          measuredCurrentChart.options.scales.x.min = totalPoints - maxLivePoints;
+          measuredCurrentChart.options.scales.x.max = totalPoints - 1;
+        } else {
+          // Clear limits if we have less than maxLivePoints
+          measuredCurrentChart.options.scales.x.min = undefined;
+          measuredCurrentChart.options.scales.x.max = undefined;
+        }
       }
 
       // Update chart once per notification

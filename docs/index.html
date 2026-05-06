@@ -33,7 +33,7 @@
             <div class="row"><div class="metric_title"> Temperature </div></div>
             <div class="row metric_value">
                 <span id="measured_temperature">XX </span>
-                <span class="units">°F</span> </div>
+                <span class="units">°C</span> </div>
         </div>
         <div class="col summary_box" >
             <div class="row"><div class="metric_title"> Humidity </div></div>
@@ -63,11 +63,49 @@
             </div>
         </div>
     </div>
+
+    <div class="row">
+        <div class="col summary_box">
+            <div class="row"><div class="metric_title"> Session Note </div></div>
+            <div class="row" style="align-items:center; gap:12px;">
+                <div class="col-sm-8">
+                    <input id="session_note" type="text" class="form-control" placeholder="Enter note for this logging session" value="0" />
+                </div>
+                <div class="col-sm-4" style="display:flex; align-items:end;">
+                    <button id="apply_note_button" class="button" type="button">Apply Note</button>
+                    <span id="note_status" style="margin-left:12px; color:#444;"></span>
+                </div>
+            </div>
+        </div>
+    </div>
         <div class="row">
             <div class="col-12 summary_box">
                 <div class="row"><div class="metric_title"> Measured Current Chart </div></div>
                 <div style="height:400px;">
                     <canvas id="measured_current_chart" style="width:100%; height:100%; display:block;"></canvas>
+                </div>
+                <div style="margin-top: 10px;">
+                    <button id="reset_zoom_button" class="button" type="button" style="min-width: 100px; font-size: 12px;">Reset Zoom</button>
+                    <button id="plot_datalog_button" class="button" type="button" style="min-width: 100px; font-size: 12px;">Plot DataLog</button>
+                    <span style="font-size: 12px; color: #666; margin-left: 10px;">Tip: Click and drag to pan, scroll to zoom. Reset to return to live view.</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- DataLog Modal -->
+        <div id="datalog_modal" class="modal">
+            <div class="modal-content" style="width: 90%; max-width: 1200px; height: 80vh;">
+                <div class="modal-header">
+                    <span class="metric_title">DataLog History</span>
+                    <span id="datalog_count" style="margin-left: 20px; font-size: 14px; color: #666;"></span>
+                    <span class="close">&times;</span>
+                </div>
+                <div style="height: calc(100% - 60px);">
+                    <canvas id="datalog_chart" style="width:100%; height:100%; display:block;"></canvas>
+                </div>
+                <div style="margin-top: 10px;">
+                    <button id="datalog_reset_zoom" class="button" type="button" style="min-width: 100px; font-size: 12px;">Reset Zoom</button>
+                    <span style="font-size: 12px; color: #666; margin-left: 10px;">Tip: Click and drag to pan, scroll to zoom.</span>
                 </div>
             </div>
         </div>
@@ -87,6 +125,7 @@
      Downloaded from "https://cdn.jsdelivr.net/npm/bootstrap@5.2.1/dist/js/bootstrap.bundle.min.js" -->
     <script src="libs/bootstrap.bundle.min.js"></script>
     <script src="libs/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <script src="app.js"></script>
 </footer>
 </html>
