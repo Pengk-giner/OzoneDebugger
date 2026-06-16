@@ -574,6 +574,10 @@ ConnectSourceButton.addEventListener('click', function() {
     ]
   })
   .then(device => {
+    // Update tab title with device name
+    if (device.name) {
+      document.title = device.name;
+    }
     // Store device for later use (e.g., restart command)
     if (!BluetoothDevices.includes(device)) {
       BluetoothDevices.push(device);
@@ -690,7 +694,9 @@ var rows = ['timestamp,current_raw,current_whitaker,current_filtered,temperature
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
   var date = new Date().toISOString().replace(/[:.]/g, '-');
-  a.download = 'ozone_data_' + date + '.csv';
+  // Get device name for filename
+  var deviceName = (BluetoothDevices.length > 0 && BluetoothDevices[0].name) ? BluetoothDevices[0].name + '_' : '';
+  a.download = deviceName + date + '.csv';
   a.href = url;
   document.body.appendChild(a);
   a.click();
@@ -784,7 +790,7 @@ function blehandle_float(event, TargetSelector, DataLog) {
       var batchAvg = batchSum / sampleCount;
       // Display the average of the batch in the textual target
       if (TargetSelector) {
-        try { TargetSelector.textContent = String(batchAvg.toFixed(6)); } catch (e) {}
+        try { TargetSelector.textContent = String(batchAvg.toFixed(3)); } catch (e) {}
       }
 
       for (var si = 0; si < sampleCount; si++) {
