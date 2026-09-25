@@ -197,8 +197,7 @@ function whittakerSmooth(y, lambda, differences) {
 }
 
 // Register bluetooth data sources, connect to parsers and display elements
-registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff12-0000-1000-8000-00805f9b34fb", blehandle_float, measuredCurrentDisplay, '')
-registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff13-0000-1000-8000-00805f9b34fb", blehandle_float_env_temp_humidity, measuredTempDisplay, '')
+registerBluetoothDataSource(BluetoothDataSources, "0000ff10-0000-1000-8000-00805f9b34fb", "0000ff12-0000-1000-8000-00805f9b34fb", blehandle_measurements, measuredCurrentDisplay, '')
 
 // logging state
 var isLogging = false;
@@ -620,68 +619,22 @@ function blehandle_float_env(event, TargetSelector, DataLog) {
   TargetSelector.textContent = String(value.toFixed(6)) ;
 }
 
-// Handler for combined temp/humidity characteristic (0xff13) - reads both values
-function blehandle_float_env_temp_humidity(event, TargetSelector, DataLog) {
-  console.log(event.target.value.byteLength)
-  const dv = event.target.value;
-  // Read humidity at offset 0 (second float32)
-  const humidityValue = dv.getFloat32(0, true);
-  measuredHumidityDisplay.textContent = String(humidityValue.toFixed(2));
-  // Read temperature at offset 4
-  const tempValue = dv.getFloat32(4, true);
-  measuredTempDisplay.textContent = String(tempValue.toFixed(2));
-
-  // Log temperature and humidity data if logging is enabled
-  try {
-    if (isLogging && Array.isArray(DataLog)) {
-      var noteVal = currentActiveNote;
-      DataLog.push({ ts: new Date().toLocaleTimeString(), temp: tempValue, humid: humidityValue, note: noteVal });
-    }
-  } catch (e) { console.error('Logging error (temp/humidity)', e); }
-}
-
-
 // Helper to download combined logs as single CSV file
 function downloadDataLogs() {
-  // Get both data sources
-  var currentSource = BluetoothDataSources.find(src => 
+  // All measurements are logged together from characteristic 0xff12.
+  var currentSource = BluetoothDataSources.find(src =>
     src.BluetoothCharacteristicUUID === "0000ff12-0000-1000-8000-00805f9b34fb"
   );
-  var tempHumidSource = BluetoothDataSources.find(src => 
-    src.BluetoothCharacteristicUUID === "0000ff13-0000-1000-8000-00805f9b34fb"
-  );
+  var rows = ['timestamp,current_raw,current_whitaker,current_filtered,temperature,humidity,note'];
 
-  // Create combined CSV rows with all columns
-var sessionNote = document.getElementById('session_note') ? document.getElementById('session_note').value : '0';
-var rows = ['timestamp,current_raw,current_whitaker,current_filtered,temperature,humidity,note'];
-  
-  // Convert temp/humidity entries to sorted array of timestamps
-  var tempHumidMap = new Map();
-  if (tempHumidSource && Array.isArray(tempHumidSource.DataLog)) {
-    tempHumidSource.DataLog.forEach(entry => {
-      tempHumidMap.set(entry.ts, { temp: entry.temp, humid: entry.humid });
-    });
-    console.debug('tempHumidMap content:', Object.fromEntries(tempHumidMap));
-  } else {
-    console.debug('tempHumidSource not found or DataLog is not array:', tempHumidSource);
-  }
-
-  // Process all current entries and match with temp/humidity
   if (currentSource && Array.isArray(currentSource.DataLog)) {
     currentSource.DataLog.forEach(entry => {
       var rawVal = (entry.raw !== undefined) ? entry.raw : (entry.value !== undefined ? entry.value : '');
       var whitakerVal = (entry.whitaker !== undefined) ? entry.whitaker : '';
       var filteredavgVal = (entry.average !== undefined) ? entry.average : '';
 
-      // Find matching temp/humidity for this timestamp (or nearest)
-      var temp = '';
-      var humid = '';
-      if (tempHumidMap.has(entry.ts)) {
-        var th = tempHumidMap.get(entry.ts);
-        temp = th.temp;
-        humid = th.humid;
-        // console.debug('tempHumid', humid, temp, 'matched for timestamp', entry.ts);
-      }
+      var temp = (entry.temp !== undefined) ? entry.temp : '';
+      var humid = (entry.humid !== undefined) ? entry.humid : '';
 
       var entryNote = entry.note !== undefined ? entry.note : '0';
       rows.push(String(entry.ts) + ',' + String(rawVal) + ',' + String(whitakerVal) + ',' + String(filteredavgVal) + ',' + String(temp) + ',' + String(humid) + ',' + String(entryNote));
@@ -763,28 +716,30 @@ function blehandle_double(event, TargetSelector, DataLog) {
   } catch (e) { console.error('Logging error', e); }
 }
 
-function blehandle_float(event, TargetSelector, DataLog) {
-  console.log(event.target.value.byteLength)
-  // Support multiple Float32 samples in one characteristic notification.
-  // The incoming DataView (event.target.value) may contain N*4 bytes where each 4 bytes is a float32 (little-endian).
+function blehandle_measurements(event, TargetSelector, DataLog) {
+  // 0xff12 contains records of three little-endian float32 values:
+  // current (offset 0), temperature (offset 4), humidity (offset 8).
+  var dv = event.target.value;
+  var recordSize = 12;
+  if (dv.byteLength === 0 || dv.byteLength % recordSize !== 0) {
+    console.warn('Invalid 0xff12 payload length:', dv.byteLength);
+    return;
+  }
+  var sampleCount = dv.byteLength / recordSize;
+  var lastOffset = (sampleCount - 1) * recordSize;
+  measuredTempDisplay.textContent = dv.getFloat32(lastOffset + 4, true).toFixed(2);
+  measuredHumidityDisplay.textContent = dv.getFloat32(lastOffset + 8, true).toFixed(2);
   try {
     if (measuredCurrentChart && (TargetSelector === measuredCurrentDisplay || (TargetSelector && TargetSelector.id === 'measured_current'))) {
-      var dv = event.target.value;
-      var byteLen = dv.byteLength || 0;
-      var floatSize = 4;
-      var sampleCount = Math.floor(byteLen / floatSize);
-      if (sampleCount <= 0) return;
-
-      // Use a single timestamp for the batch, but make labels unique by appending index/ms
+      // Use a single timestamp for the notification.
       var ts = new Date();
       var baseLabel = ts.toLocaleTimeString();
-      var ms = ts.getMilliseconds();
 
       // Read all samples into an array so we can compute batch statistics (average) and then process each sample
       var samples = new Array(sampleCount);
       var batchSum = 0;
       for (var si = 0; si < sampleCount; si++) {
-        samples[si] = dv.getFloat32(si * floatSize, true) * 1e3; // convert to nA
+        samples[si] = dv.getFloat32(si * recordSize, true) * 1e3; // convert to nA
         batchSum += samples[si];
       }
       var batchAvg = batchSum / sampleCount;
@@ -826,8 +781,7 @@ function blehandle_float(event, TargetSelector, DataLog) {
         }
         measuredCurrentLPData.push(lp);
 
-        // Create a unique label for each sample with proper 3
-        // var label = baseLabel + '.' + (ms < 100 ? ('0' + ms + si) : (ms + si));
+        // Measurements in each record share the notification timestamp.
         var label = baseLabel;
         measuredCurrentChart.data.labels.push(label);
         measuredCurrentChart.data.datasets[0].data.push(y);
@@ -843,15 +797,20 @@ function blehandle_float(event, TargetSelector, DataLog) {
         }
         var averageValue = (count > 0) ? (sum / count) : null;
         measuredCurrentChart.data.datasets[1].data.push( (averageValue !== null) ? averageValue : null );
-      }
 
-      // If logging is enabled, save raw, whitaker and average into the DataLog for this source
-      try {
+        // Keep each current sample and its environment readings in the same log entry.
         if (isLogging && Array.isArray(DataLog)) {
-          var noteVal = currentActiveNote;
-          DataLog.push({ ts: label, raw: y, whitaker: (sval !== null && sval !== undefined) ? sval : null, average: (averageValue !== null) ? averageValue : null, note: noteVal });
+          DataLog.push({
+            ts: label,
+            raw: y,
+            whitaker: (sval !== null && sval !== undefined) ? sval : null,
+            average: (averageValue !== null) ? averageValue : null,
+            temp: dv.getFloat32(si * recordSize + 4, true),
+            humid: dv.getFloat32(si * recordSize + 8, true),
+            note: currentActiveNote
+          });
         }
-      } catch (e) { console.error('Logging error (filtered)', e); }
+      }
 
       // Trim to most recent N points (after adding the batch)
       // Increased to 50000 to allow viewing historical data while panning
