@@ -1,5 +1,6 @@
 var BluetoothDataSources = [];
 var BluetoothDevices = [];
+var BluetoothReconnectStates = new WeakMap();
 
 // configure the buttons
 var ConnectSourceButton = document.querySelector('#connect_button');
@@ -513,7 +514,9 @@ function registerBluetoothDataSource(BluetoothDataSourcesArray, BluetoothService
     BluetoothCharacteristicUUID : BluetoothCharacteristicUUID,
     ValueHandler: ValueHandler,
     TargetSelector: TargetSelector,
-    DataLog: log});
+    DataLog: log,
+    NotificationCharacteristic: null,
+    NotificationHandler: null});
 };
 
 // Update or create a small element showing the last time a value was received.
@@ -538,28 +541,76 @@ function updateLastSeen(serviceUUID, charUUID) {
   el.textContent = text;
 }
 
-function connectBlueToothCharacteristic(BluetoothDevice, BluetoothServiceUUID, BluetoothCharacteristicUUID, ValueHandler, TargetSelector, DataLog){
-  // Connects a bluetooth characteristic to a document and to a DataLog, which holds historic information
-  console.log('Connecting bluetooth data source: ' + BluetoothServiceUUID + ', ' + BluetoothCharacteristicUUID)
-  BluetoothDevice.gatt.connect()
-      .then(server => server.getPrimaryService(BluetoothServiceUUID))
-      .then(service => service.getCharacteristic(BluetoothCharacteristicUUID))
+function connectBlueToothCharacteristic(server, source){
+  console.log('Connecting bluetooth data source: ' + source.BluetoothServiceUUID + ', ' + source.BluetoothCharacteristicUUID)
+  return server.getPrimaryService(source.BluetoothServiceUUID)
+      .then(service => service.getCharacteristic(source.BluetoothCharacteristicUUID))
       .then(characteristic => characteristic.startNotifications())
-      .then(characteristic => characteristic.addEventListener('characteristicvaluechanged', function(event){
-        // call the existing handler to update the target element / data log
-        try { ValueHandler(event, TargetSelector, DataLog); } catch (e) { console.error('ValueHandler error', e); }
-        // update a visible "last seen" timestamp for this service/characteristic
-        try { 
-          var svc = String(BluetoothServiceUUID).toLowerCase();
-          if (svc === '0000ff10-0000-1000-8000-00805f9b34fb' ) {
-            updateLastSeen(BluetoothServiceUUID, BluetoothCharacteristicUUID);
-          }
-        } catch (e) { console.error('updateLastSeen error', e); }
-      }))
-      // .catch(error => {
-      //   console.log('error:' + error);
-      // });
-};
+      .then(characteristic => {
+        if (source.NotificationCharacteristic && source.NotificationHandler) {
+          source.NotificationCharacteristic.removeEventListener('characteristicvaluechanged', source.NotificationHandler);
+        }
+        source.NotificationCharacteristic = characteristic;
+        source.NotificationHandler = function(event) {
+          try { source.ValueHandler(event, source.TargetSelector, source.DataLog); } catch (e) { console.error('ValueHandler error', e); }
+          try {
+            var svc = String(source.BluetoothServiceUUID).toLowerCase();
+            if (svc === '0000ff10-0000-1000-8000-00805f9b34fb') {
+              updateLastSeen(source.BluetoothServiceUUID, source.BluetoothCharacteristicUUID);
+            }
+          } catch (e) { console.error('updateLastSeen error', e); }
+        };
+        characteristic.addEventListener('characteristicvaluechanged', source.NotificationHandler);
+      });
+}
+
+function getBluetoothReconnectState(device) {
+  var state = BluetoothReconnectStates.get(device);
+  if (!state) {
+    state = { connectionPromise: null, retryTimer: null, disconnectHandlerAttached: false };
+    BluetoothReconnectStates.set(device, state);
+  }
+  return state;
+}
+
+function connectBluetoothDevice(device) {
+  var state = getBluetoothReconnectState(device);
+  if (state.connectionPromise) return state.connectionPromise;
+  if (device.gatt.connected) return Promise.resolve();
+
+  state.connectionPromise = device.gatt.connect()
+    .then(server => Promise.all(BluetoothDataSources.map(source => connectBlueToothCharacteristic(server, source))))
+    .then(() => {
+      if (state.retryTimer) {
+        clearInterval(state.retryTimer);
+        state.retryTimer = null;
+      }
+      console.log('Bluetooth device connected');
+    })
+    .catch(error => {
+      console.error('Bluetooth connection attempt failed:', error);
+      throw error;
+    })
+    .finally(() => {
+      state.connectionPromise = null;
+    });
+  return state.connectionPromise;
+}
+
+function watchBluetoothDisconnect(device) {
+  var state = getBluetoothReconnectState(device);
+  if (state.disconnectHandlerAttached) return;
+  state.disconnectHandlerAttached = true;
+  device.addEventListener('gattserverdisconnected', function() {
+    if (state.retryTimer) return;
+    console.warn('Bluetooth device disconnected; retrying every 30 seconds');
+    state.retryTimer = setInterval(function() {
+      if (!device.gatt.connected) {
+        connectBluetoothDevice(device).catch(function() {});
+      }
+    }, 30000);
+  });
+}
 
 ConnectSourceButton.addEventListener('click', function() {
   console.log('Requesting Bluetooth Service...')
@@ -582,9 +633,8 @@ ConnectSourceButton.addEventListener('click', function() {
     if (!BluetoothDevices.includes(device)) {
       BluetoothDevices.push(device);
     }
-    BluetoothDataSources.forEach(source => {
-      connectBlueToothCharacteristic(device, source.BluetoothServiceUUID, source.BluetoothCharacteristicUUID, source.ValueHandler, source.TargetSelector, source.DataLog);
-    })
+    watchBluetoothDisconnect(device);
+    connectBluetoothDevice(device).catch(function() {});
   })
   .catch(error => {
     console.log('error:' + error);
