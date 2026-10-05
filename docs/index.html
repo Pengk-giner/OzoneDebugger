@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="utf-8">
     <meta name="description" content="Web Bluetooth control for Ozone sensor">
     <link rel="icon" sizes="192x192" href="assets/favicon.png">
     <title>Giner Labs</title>
@@ -28,6 +29,14 @@
             <div class="row metric_value" >
                 <span id="measured_current" > XX</span>
                 <span class="units">nA</span>  </div>
+        </div>
+        <div class="col summary_box">
+            <div class="row"><div class="metric_title"> O<sub>3</sub> </div></div>
+            <div class="row metric_value">
+                <span id="measured_ozone">--</span>
+                <span class="units">ppb</span>
+            </div>
+            <div id="ozone_reading_status" class="ozone-status" role="status">Apply calibration parameters to calculate O3.</div>
         </div>
         <div class="col summary_box" >
             <div class="row"><div class="metric_title"> Temperature </div></div>
@@ -76,6 +85,56 @@
                     <span id="note_status" style="margin-left:12px; color:#444;"></span>
                 </div>
             </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col summary_box ozone-calibration">
+            <div class="metric_title">O<sub>3</sub> Conversion Parameters</div>
+            <p class="ozone-formula">O<sub>3</sub> = [(I &minus; offset(T, RH)) / (k &times; exp(a &times; (T &minus; Tref) + h &times; (RH &minus; RHref)))]<sup>1/p</sup></p>
+            <p>offset(T, RH) = b0 + bT &times; (T &minus; Tref) + bRH &times; (RH &minus; RHref)</p>
+            <p class="ozone-help">Uses the displayed batch-average current in nA and the latest temperature (&deg;C) and humidity (0&ndash;100%). Enter your calibration values, then apply. k must be nonzero and p must be positive.</p>
+            <form id="ozone_parameters_form" novalidate>
+                <div class="ozone-parameter-grid">
+                    <div>
+                        <label for="ozone_k" class="form-label">k (nA / ppb<sup>p</sup>)</label>
+                        <input id="ozone_k" name="k" type="number" step="any" class="form-control" value="126.479" required>
+                    </div>
+                    <div>
+                        <label for="ozone_a" class="form-label">a (1 / &deg;C)</label>
+                        <input id="ozone_a" name="a" type="number" step="any" class="form-control" value="0.045" >
+                    </div>
+                    <div>
+                        <label for="ozone_h" class="form-label">h (1 / %RH)</label>
+                        <input id="ozone_h" name="h" type="number" step="any" class="form-control" value="0" >
+                    </div>
+                    <div>
+                        <label for="ozone_tref" class="form-label">Tref (&deg;C)</label>
+                        <input id="ozone_tref" name="tref" type="number" step="any" class="form-control" value="25" >
+                    </div>
+                    <div>
+                        <label for="ozone_rhref" class="form-label">RHref (%)</label>
+                        <input id="ozone_rhref" name="rhref" type="number" step="any" class="form-control" value="25" min="0" max="100">
+                    </div>
+                    <div>
+                        <label for="ozone_p" class="form-label">p (greater than 0)</label>
+                        <input id="ozone_p" name="p" type="number" step="any" class="form-control" value="0.455" required>
+                    </div>
+                    <div>
+                        <label for="ozone_b0" class="form-label">b0 (nA)</label>
+                        <input id="ozone_b0" name="b0" type="number" step="any" class="form-control" value="12.6" >
+                    </div>
+                    <div>
+                        <label for="ozone_bT" class="form-label">bT (nA / &deg;C)</label>
+                        <input id="ozone_bT" name="bT" type="number" step="any" class="form-control" value="1.435" >
+                    </div>
+                    <div>
+                        <label for="ozone_bRH" class="form-label">bRH (nA / %RH)</label>
+                        <input id="ozone_bRH" name="bRH" type="number" step="any" class="form-control" value="0" >
+                    </div>
+                </div>
+                <button class="button" type="submit">Apply Parameters</button>
+                <span id="ozone_parameters_status" class="ozone-status" role="status"></span>
+            </form>
         </div>
     </div>
         <div class="row">

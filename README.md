@@ -74,3 +74,14 @@ If things don't work as expected you may find helpful messages / errors being pr
 **Flask / other host is not serving as **HTTPS**** - it seems that there are no errors, Chrome just refuses to run the connection routines, unhelpful! 
  
 **SSL certificates are corrupted / invalid** - should not happen when using an adhoc certificate but I had many problems with self-signed certificates
+### O3 conversion
+
+The **O3 Conversion Parameters** box below Session Note accepts k, a, h, Tref, RHref, p, b0, bT, and bRH. Click **Apply Parameters** to calculate the O3 display in ppb:
+
+`O3 = ((I - offset) / (k * exp(a * (T - Tref) + h * (RH - RHref)))) ** (1 / p)`
+
+`offset = b0 + bT * (T - Tref) + bRH * (RH - RHref)`
+
+I is the batch-average current in nA (before display rounding), T is the latest temperature in degrees Celsius, and RH is the latest humidity in percent (0 to 100). The reading refreshes when current, environment data, or applied parameters change. k must be nonzero (either sign is supported), p must be positive, and all parameters must be finite. Negative corrected-current/sensitivity ratios and invalid readings show an explanation instead of a concentration.
+
+Enter sensor-specific calibration values; k and p start empty. Parameters apply to the live O3 display and last until the page is reloaded. Current charts and CSV logs remain in nA.

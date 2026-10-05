@@ -12,6 +12,82 @@ var measuredTempDisplay = document.querySelector('#measured_temperature');
 var measuredHumidityDisplay = document.querySelector('#measured_humidity');
 var isRecordingDisplay = document.querySelector('#logging_status');
 
+// Keep full-precision sensor values separate from the formatted displays.
+var ozoneParameters = null;
+var latestOzoneInputs = { current: null, temperature: null, humidity: null };
+var measuredOzoneDisplay = document.getElementById('measured_ozone');
+var ozoneReadingStatus = document.getElementById('ozone_reading_status');
+var ozoneParametersStatus = document.getElementById('ozone_parameters_status');
+var ozoneParametersForm = document.getElementById('ozone_parameters_form');
+var ozoneParameterNames = ['k', 'a', 'h', 'tref', 'rhref', 'p', 'b0', 'bT', 'bRH'];
+
+function validateOzoneParameters(parameters) {
+  if (!parameters || !ozoneParameterNames.every(name => Number.isFinite(parameters[name]))) {
+    return 'Enter a finite number for every parameter.';
+  }
+  if (parameters.k === 0) return 'k must be nonzero.';
+  if (parameters.p <= 0) return 'p must be greater than zero.';
+  if (parameters.rhref < 0 || parameters.rhref > 100) return 'RHref must be between 0 and 100%.';
+  return '';
+}
+
+function calculateOzone(current, temperature, humidity, parameters) {
+  var error = validateOzoneParameters(parameters);
+  if (error) return { value: null, error: error };
+  if (![current, temperature, humidity].every(Number.isFinite)) {
+    return { value: null, error: 'Waiting for valid current, temperature and humidity readings.' };
+  }
+  if (humidity < 0 || humidity > 100) {
+    return { value: null, error: 'Humidity must be between 0 and 100%.' };
+  }
+  var deltaT = temperature - parameters.tref;
+  var deltaRH = humidity - parameters.rhref;
+  var offset = parameters.b0 + parameters.bT * deltaT + parameters.bRH * deltaRH;
+  var sensitivity = parameters.k * Math.exp(parameters.a * deltaT + parameters.h * deltaRH);
+  var ratio = (current - offset) / sensitivity;
+  if (!Number.isFinite(offset) || !Number.isFinite(sensitivity) || sensitivity === 0 || !Number.isFinite(ratio)) {
+    return { value: null, error: 'Conversion is outside the numeric range; check calibration values.' };
+  }
+  if (ratio < 0) {
+    return { value: null, error: 'Corrected current / sensitivity is negative; no valid O3 concentration.' };
+  }
+  var concentration = Math.pow(ratio, 1 / parameters.p);
+  if (!Number.isFinite(concentration)) {
+    return { value: null, error: 'Conversion is outside the numeric range; check calibration values.' };
+  }
+  return { value: concentration, error: '' };
+}
+
+function updateOzoneDisplay() {
+  if (!measuredOzoneDisplay || !ozoneReadingStatus) return;
+  var result = ozoneParameters
+    ? calculateOzone(latestOzoneInputs.current * 1000, latestOzoneInputs.temperature, latestOzoneInputs.humidity, ozoneParameters)
+    : { value: null, error: 'Apply calibration parameters to calculate O3.' }; // latestOzoneInputs.current * 1000 to convert from nA to pA
+  measuredOzoneDisplay.textContent = result.value === null ? '--' : result.value.toFixed(3);
+  ozoneReadingStatus.textContent = result.error;
+}
+
+if (ozoneParametersForm) {
+  ozoneParametersForm.addEventListener('input', function() {
+    ozoneParametersStatus.textContent = 'Unapplied changes. Click Apply Parameters to use these values.';
+  });
+  ozoneParametersForm.addEventListener('submit', function(event) {
+    event.preventDefault();
+    var candidate = {};
+    ozoneParameterNames.forEach(function(name) {
+      candidate[name] = document.getElementById('ozone_' + name).valueAsNumber;
+    });
+    var error = validateOzoneParameters(candidate);
+    if (error) {
+      ozoneParametersStatus.textContent = error + (ozoneParameters ? ' Previous parameters remain active.' : '');
+      return;
+    }
+    ozoneParameters = candidate;
+    ozoneParametersStatus.textContent = 'Parameters applied.';
+    updateOzoneDisplay();
+  });
+}
+
 // Measured current chart (uses Chart.js loaded in the page)
 var measuredCurrentChart = null;
 var measuredCurrentChartCanvas = document.getElementById('measured_current_chart');
@@ -680,6 +756,9 @@ function blehandle_float_env_temp_humidity(event, TargetSelector, DataLog) {
   // Read temperature at offset 4
   const tempValue = dv.getFloat32(4, true);
   measuredTempDisplay.textContent = String(tempValue.toFixed(2));
+  latestOzoneInputs.temperature = tempValue;
+  latestOzoneInputs.humidity = humidityValue;
+  updateOzoneDisplay();
 
   // Log temperature and humidity data if logging is enabled
   try {
@@ -818,7 +897,7 @@ function blehandle_float(event, TargetSelector, DataLog) {
   // Support multiple Float32 samples in one characteristic notification.
   // The incoming DataView (event.target.value) may contain N*4 bytes where each 4 bytes is a float32 (little-endian).
   try {
-    if (measuredCurrentChart && (TargetSelector === measuredCurrentDisplay || (TargetSelector && TargetSelector.id === 'measured_current'))) {
+    if (TargetSelector === measuredCurrentDisplay || (TargetSelector && TargetSelector.id === 'measured_current')) {
       var dv = event.target.value;
       var byteLen = dv.byteLength || 0;
       var floatSize = 4;
@@ -842,6 +921,11 @@ function blehandle_float(event, TargetSelector, DataLog) {
       if (TargetSelector) {
         try { TargetSelector.textContent = String(batchAvg.toFixed(3)); } catch (e) {}
       }
+
+      latestOzoneInputs.current = batchAvg;
+      updateOzoneDisplay();
+      // Numeric readings remain available if Chart.js fails to load.
+      if (!measuredCurrentChart) return;
 
       for (var si = 0; si < sampleCount; si++) {
         var raw = samples[si];

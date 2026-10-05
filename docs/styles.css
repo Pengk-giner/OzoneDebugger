@@ -131,3 +131,24 @@ body {
   color: #147c7a;
   text-decoration: none;
 }
+
+.ozone-calibration {
+  text-align: left;
+}
+
+.ozone-formula {
+  margin-top: 12px;
+  overflow-wrap: anywhere;
+}
+
+.ozone-help, .ozone-status {
+  font-size: 0.85rem;
+  color: #555;
+}
+
+.ozone-parameter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
